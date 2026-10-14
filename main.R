@@ -18,8 +18,9 @@ library(tcltk)
     { # ---GAME STATE---
         running <- TRUE
     }
+
     { # ---ROOMS AND MAP---
-        { # CONSTANTS, world_map and basic_room         
+        { # CONSTANTS
             SINGLE_ROOM_H <- 10
             SINGLE_ROOM_W <- 10
             OFFSET <- 5
@@ -30,19 +31,76 @@ library(tcltk)
                 "@" = "\033[32m@\033[0m",
                 "!" = "\033[31m!\033[0m"
             )
+        }
 
+        { # world_map and rooms_selection_list
             world_map <- matrix("##", nrow = 100, ncol = 100) #█
 
-            basic_room <- matrix("#", nrow = SINGLE_ROOM_H, ncol = SINGLE_ROOM_W)
-            basic_room[2:SINGLE_ROOM_H, 2:SINGLE_ROOM_W] <- " "
-            basic_room_up <- basic_room_left <- basic_room
-            basic_room_up[1, SINGLE_ROOM_W/2+1] <- " "
-            basic_room_left[SINGLE_ROOM_H/2+1, 1] <- " "
+            { # rooms selection creation
+                room_preassets <- list(
+                    room_1 = "
+                        ##########/
+                        #........./
+                        #.....!.../
+                        #..!..!.../
+                        #........./
+                        #........./
+                        #........./
+                        #........./
+                        #........./
+                        #.........",
+                    room_2 = "
+                        ##########/
+                        #........./
+                        #........./
+                        #........./
+                        #........./
+                        #........./
+                        #........./
+                        #........./
+                        #........./
+                        #.........",
+                    room_3 = "
+                        ##########/
+                        #........./
+                        #........./
+                        #........./
+                        #..!...!../
+                        #........./
+                        #..!...!../
+                        #...!!!.../
+                        #........./
+                        #........."
+                )
+
+                rooms_selection_list <- list()
+
+                for (room_template in room_preassets) {
+                    # Step by step processing using |> pipe
+                    room_template <- room_template |>
+                        gsub(pattern = "[[:space:]]", replacement = "") |> # 1. Removes all spaces, tabs and newlines
+                        gsub(pattern = "\\.", replacement = " ")        # 2. Replaces dots with spaces (dot in regex is \\.)
+                    
+                    # Split by newlines
+                    lines <- strsplit(room_template, "/")[[1]]
+                    
+                    # Change to matrix
+                    room_matrix <- do.call( rbind, strsplit(lines, ""))
+
+                    # Add doors
+                    basic_room_up <- basic_room_left <- room_matrix
+                    basic_room_up[1, SINGLE_ROOM_W/2+1] <- " "
+                    basic_room_left[SINGLE_ROOM_H/2+1, 1] <- " "
+
+                    # Add to selection list
+                    rooms_selection_list[[length(rooms_selection_list) + 1]] <- basic_room_up
+                    rooms_selection_list[[length(rooms_selection_list) + 1]] <- basic_room_left
+                }
+
+            }
         }
 
         { # Filling the world with rooms
-            room_templates <- list(room_1 = basic_room_up, room_2 = basic_room_left)
-
             for(y in 0:2){
                 for(x in 0:2){
                     place_room(1+SINGLE_ROOM_H*y+OFFSET, 1+SINGLE_ROOM_W*x+OFFSET)
@@ -93,6 +151,7 @@ library(tcltk)
             }
         }
     }
+
     { # ---PLAYER---
         player_y <- 10
         player_x <- 10
@@ -101,19 +160,26 @@ library(tcltk)
 
 { # ---FUNCTIONS---
     place_room <- function(row, col) {
-        world_map[row:(row+SINGLE_ROOM_H-1), col:(col+SINGLE_ROOM_W-1)] <<- sample(room_templates, 1)[[1]]
+        world_map[row:(row+SINGLE_ROOM_H-1), col:(col+SINGLE_ROOM_W-1)] <<- sample(rooms_selection_list, 1)[[1]]
     }
 
     check_input <- function() {
         switch(
             current_key,
-            "w" = {player_y <<- player_y - 1},
-            "s" = {player_y <<- player_y + 1},
-            "d" = {player_x <<- player_x + 1},
-            "a" = {player_x <<- player_x - 1},
+            "w" = {player_move(-1, 0)},
+            "s" = {player_move(1, 0)},
+            "d" = {player_move(0, 1)},
+            "a" = {player_move(0, -1)},
             "q" = {running <<- FALSE}
         )
         current_key <<- " "
+    }
+
+    player_move <- function(y_offset, x_offset) {
+        if(world_map[player_y + y_offset, player_x + x_offset] != "#" && world_map[player_y + y_offset, player_x + x_offset] != "##") {
+            player_x <<- player_x + x_offset
+            player_y <<- player_y + y_offset
+        }
     }
 
     draw_world <- function() {
