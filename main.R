@@ -19,6 +19,7 @@ library(tcltk)
     tkbind(CONTROLLER, "<Right>", function(){ current_key <<-"right"})                  # Bind the right arrow key to set current_key to "right"
     tkbind(CONTROLLER, "<Up>", function(){ current_key <<-"up"})                        # Bind the up arrow key to set current_key to "up"
     tkbind(CONTROLLER, "<Down>", function(){ current_key <<-"down"})                    # Bind the down arrow key to set current_key to "down"
+    tkbind(CONTROLLER, "<p>", function(){ current_key <<-"p"})                          # Bind the 'p' key to set current_key to "p"
 }
 
 { # ---FUNCTIONS---
@@ -41,6 +42,7 @@ library(tcltk)
     check_input <- function() {
         tcl("update", "idletasks") # Clear any pending events
 
+        # key events
         switch(
             current_key,
             "w" = {player_move(-1, 0)},
@@ -51,22 +53,23 @@ library(tcltk)
             "right" = {slash_sword(0, 1)},
             "up" = {slash_sword(-1, 0)},
             "down" = {slash_sword(1, 0)},
+            "p" = {{player$hp <<- player$hp - 10; print_player_hp <<- TRUE}},
             "q" = {running <<- FALSE}
         )
         current_key <<- " "
     }
 
     player_move <- function(y_offset, x_offset) {
-        if(!(world_map[player_y + y_offset, player_x + x_offset] %in% collide_objects)) {
-            player_x <<- player_x + x_offset
-            player_y <<- player_y + y_offset
+        if(!(world_map[player$y + y_offset, player$x + x_offset] %in% collide_objects)) {
+            player$x <<- player$x + x_offset
+            player$y <<- player$y + y_offset
         }
     }
 
     slash_sword <- function(y_offset, x_offset) {
         sword_slash <<- c(y_offset, x_offset)
         for(enemy in enemies) {
-            if(enemy$y == player_y + sword_slash[1] && enemy$x == player_x + sword_slash[2]) {
+            if(enemy$y == player$y + sword_slash[1] && enemy$x == player$x + sword_slash[2]) {
                 enemies <<- enemies[-which(sapply(enemies, function(x) x$y == enemy$y && x$x == enemy$x))]
                 world_map[enemy$y, enemy$x] <<- " "
                 break
@@ -79,14 +82,19 @@ library(tcltk)
         # side data - printed at column 15
         cat("\033[H\033[15C")
         cat("FPS: ", round(1/current_time_diff, 0), "\n")
-        cat("\033[15C")
+        if(print_player_hp) {
+            cat("\033[H\033[25C")
+            # coloured hp bar
+            cat("Player HP: ", get_player_hp_bar(), "\n")
+            print_player_hp <<- FALSE
+        }
     }
 
     draw_world <- function() {
         # Cut the world_map matrix around the player
-        viewport <- world_map[(player_y-OFFSET):(player_y+OFFSET), (player_x-OFFSET):(player_x+OFFSET)]
+        viewport <- world_map[(player$y-OFFSET):(player$y+OFFSET), (player$x-OFFSET):(player$x+OFFSET)]
 
-        # Place the player in the center of the viewport
+        # Draw player in the center of the viewport
         viewport[OFFSET+1, OFFSET+1] <- "@"
         if(sword_slash[1] != 0 || sword_slash[2] != 0) {
             viewport[sword_slash[1] + OFFSET + 1, sword_slash[2] + OFFSET + 1] <- "/"
@@ -156,7 +164,9 @@ library(tcltk)
             "x" = wrap_colour("x", fg = c(255, 0, 0)),                              # red / none                # basic enemy
             "X" = wrap_colour("x", fg = c(255, 0, 0), bg = c(35, 35, 35)),          # red / dark grey           # mid enemy
             "B" = wrap_colour("X", fg = c(255, 0, 0), bg = c(0, 0, 0)),             # red / black               # high enemy
-            "/" = wrap_colour("/", fg = c(255, 255, 255))                           # white / none              # sword slash
+            "/" = wrap_colour("/", fg = c(255, 255, 255)),                          # white / none              # sword slash
+            "█" = wrap_colour("█", fg = c(255, 0, 0)),                              # red / none                # hp bar
+            "░" = wrap_colour("░", fg = c(100, 0, 0))                               # dark red / none           # hp bar empty
         )
 
         #COLOUR_PALETTE <- c(                                                        # foreground / background   # name
@@ -316,8 +326,20 @@ library(tcltk)
     }
 
     { # ---PLAYER---
-        player_y <- 10
-        player_x <- 10
+        player <- list(
+            y = 10,
+            x = 10,
+            hp = 100,
+            max_hp = 100,
+            atk = 15
+        )
+        print_player_hp <- TRUE
+
+        get_player_hp_bar <- function() {
+            hp_bar <- paste(rep(COLOUR_PALETTE["█"], player$hp/5), collapse = "")
+            hp_bar <- paste(hp_bar, paste(rep(COLOUR_PALETTE["░"], player$max_hp/5 - player$hp/5), collapse = ""), sep = "")
+            return(hp_bar)
+        }
 
         sword_visibility <- 0
         sword_slash <- c(0, 0)
