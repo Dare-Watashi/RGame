@@ -3,19 +3,22 @@ library(tcltk)
 
 { # ---TCLTK AND KEY BINDINGS
     current_key <- ""
-    CONTROLLER <- tktoplevel()
-    tkwm.geometry(CONTROLLER, "200x50")
-    tkwm.title(CONTROLLER, "Key press reader")
-    tkpack(tklabel(CONTROLLER, text="Keep this window selected\nto play the game"))
-    tkbind(CONTROLLER, "<w>", function(){ current_key <<-"w"})
-    tkbind(CONTROLLER, "<a>", function(){ current_key <<-"a"})
-    tkbind(CONTROLLER, "<s>", function(){ current_key <<-"s"})
-    tkbind(CONTROLLER, "<d>", function(){ current_key <<-"d"})
-    tkbind(CONTROLLER, "<q>", function(){ current_key <<-"q"})
-    tkbind(CONTROLLER, "<Left>", function(){ current_key <<-"left"})
-    tkbind(CONTROLLER, "<Right>", function(){ current_key <<-"right"})
-    tkbind(CONTROLLER, "<Up>", function(){ current_key <<-"up"})
-    tkbind(CONTROLLER, "<Down>", function(){ current_key <<-"down"})
+    CONTROLLER <- tktoplevel()                                                          # Create a window to capture key presses
+    tkwm.geometry(CONTROLLER, "1x1+-2000+-2000")                                        # Move it off screen
+    tkwm.title(CONTROLLER, "Key press reader")                                          # Set the title
+    tkwm.overrideredirect(CONTROLLER, TRUE)                                             # Remove the window decorations
+    tkwm.deiconify(CONTROLLER)                                                          # Deiconify the window
+    tkraise(CONTROLLER)                                                                 # Raise the window
+    tkfocus("-force", CONTROLLER)                                                       # Force focus on the window
+    tkbind(CONTROLLER, "<w>", function(){ current_key <<-"w"})                          # Bind the 'w' key to set current_key to "w"
+    tkbind(CONTROLLER, "<a>", function(){ current_key <<-"a"})                          # Bind the 'a' key to set current_key to "a"
+    tkbind(CONTROLLER, "<s>", function(){ current_key <<-"s"})                          # Bind the 's' key to set current_key to "s"
+    tkbind(CONTROLLER, "<d>", function(){ current_key <<-"d"})                          # Bind the 'd' key to set current_key to "d"
+    tkbind(CONTROLLER, "<q>", function(){ current_key <<-"q"})                          # Bind the 'q' key to set current_key to "q"
+    tkbind(CONTROLLER, "<Left>", function(){ current_key <<-"left"})                    # Bind the left arrow key to set current_key to "left"
+    tkbind(CONTROLLER, "<Right>", function(){ current_key <<-"right"})                  # Bind the right arrow key to set current_key to "right"
+    tkbind(CONTROLLER, "<Up>", function(){ current_key <<-"up"})                        # Bind the up arrow key to set current_key to "up"
+    tkbind(CONTROLLER, "<Down>", function(){ current_key <<-"down"})                    # Bind the down arrow key to set current_key to "down"
 }
 
 { # ---FUNCTIONS---
@@ -36,6 +39,8 @@ library(tcltk)
     }
 
     check_input <- function() {
+        tcl("update", "idletasks") # Clear any pending events
+
         switch(
             current_key,
             "w" = {player_move(-1, 0)},
@@ -70,6 +75,13 @@ library(tcltk)
         sword_visibility <<- 1
     }
 
+    print_side_data <- function() {
+        # side data - printed at column 15
+        cat("\033[H\033[15C")
+        cat("FPS: ", round(1/current_time_diff, 0), "\n")
+        cat("\033[15C")
+    }
+
     draw_world <- function() {
         # Cut the world_map matrix around the player
         viewport <- world_map[(player_y-OFFSET):(player_y+OFFSET), (player_x-OFFSET):(player_x+OFFSET)]
@@ -92,8 +104,8 @@ library(tcltk)
         final_frame <- paste(row_strings, collapse = '\n')
 
         # Move the cursor to the top-left corner, delay and print the frame
+        print_side_data()
         cat("\033[H")
-        Sys.sleep(0.01)
         cat(final_frame)
         cat('\n')
     }
@@ -107,11 +119,23 @@ library(tcltk)
             cat("\033[?25h\033[0m")
             tkdestroy(CONTROLLER)
         })
+        
+        begin_time <<- Sys.time()
 
         # Main game loop
         while(running){
             check_input()
             draw_world()
+
+            end_time <<- Sys.time()
+            current_time_diff <<- as.numeric(difftime(end_time, begin_time, units = "secs"))
+
+            # Wait for the next tick - We use loop instead of Sys.sleep since tcltk interrupts it, causing code to run untimely
+            while(current_time_diff < TARGET_TICK_TIME) {
+                end_time <<- Sys.time()
+                current_time_diff <<- as.numeric(difftime(end_time, begin_time, units = "secs"))
+            }
+            begin_time <<- Sys.time()
         }
     }
 }
@@ -119,6 +143,9 @@ library(tcltk)
 { # ---GLOBAL VALUES---
     { # ---GAME STATE---
         running <- TRUE
+        TARGET_TICK_TIME <- 0.05
+        begin_time <- end_time <- Sys.time()
+        current_time_diff <- 0
 
         COLOUR_PALETTE <- c(                                                        # foreground / background   # name
             "##" = wrap_colour("#", fg = c(100, 100, 100)),                         # dark gray / none          # world_map border
