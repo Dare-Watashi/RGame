@@ -23,104 +23,215 @@ library(tcltk)
 }
 
 { # ---FUNCTIONS---
-    wrap_colour <- function(char, fg = NULL, bg = NULL) {
-        if(is.null(fg) && is.null(bg)) {
-            return(char)
-        }
-        else if(is.null(bg)) {
-            return(paste0("\033[38;2;", fg[[1]], ";", fg[[2]], ";", fg[[3]], "m", char, "\033[0m"))
-        }
-        else {
-            return(paste0("\033[48;2;", bg[[1]], ";", bg[[2]], ";", bg[[3]], "m\033[38;2;", fg[[1]], ";", fg[[2]], ";", fg[[3]], "m", char, "\033[0m"))
-        }
-    }
 
-    place_room <- function(row, col) {
-        world_map[row:(row+SINGLE_ROOM_H-1), col:(col+SINGLE_ROOM_W-1)] <<- sample(rooms_selection_list, 1)[[1]]
-    }
-
-    check_input <- function() {
-        tcl("update", "idletasks") # Clear any pending events
-
-        # key events
-        switch(
-            current_key,
-            "w" = {player_move(-1, 0)},
-            "s" = {player_move(1, 0)},
-            "d" = {player_move(0, 1)},
-            "a" = {player_move(0, -1)},
-            "left" = {slash_sword(0, -1)},
-            "right" = {slash_sword(0, 1)},
-            "up" = {slash_sword(-1, 0)},
-            "down" = {slash_sword(1, 0)},
-            "p" = {{player$hp <<- player$hp - 10; print_player_hp <<- TRUE}},
-            "q" = {running <<- FALSE}
-        )
-        current_key <<- " "
-    }
-
-    player_move <- function(y_offset, x_offset) {
-        if(!(world_map[player$y + y_offset, player$x + x_offset] %in% collide_objects)) {
-            player$x <<- player$x + x_offset
-            player$y <<- player$y + y_offset
-        }
-    }
-
-    slash_sword <- function(y_offset, x_offset) {
-        sword_slash <<- c(y_offset, x_offset)
-        for(enemy in enemies) {
-            if(enemy$y == player$y + sword_slash[1] && enemy$x == player$x + sword_slash[2]) {
-                enemies <<- enemies[-which(sapply(enemies, function(x) x$y == enemy$y && x$x == enemy$x))]
-                world_map[enemy$y, enemy$x] <<- " "
-                break
+    { # ---COLOUR FUNCTIONS---
+        wrap_colour <- function(char, fg = NULL, bg = NULL) {
+            if(is.null(fg) && is.null(bg)) {
+                return(char)
+            }
+            else if(is.null(bg)) {
+                return(paste0("\033[38;2;", fg[[1]], ";", fg[[2]], ";", fg[[3]], "m", char, "\033[0m"))
+            }
+            else {
+                return(paste0("\033[48;2;", bg[[1]], ";", bg[[2]], ";", bg[[3]], "m\033[38;2;", fg[[1]], ";", fg[[2]], ";", fg[[3]], "m", char, "\033[0m"))
             }
         }
-        sword_visibility <<- 1
     }
 
-    print_side_data <- function() {
-        # side data - printed at column 15
-        cat("\033[H\033[15C")
-        cat("FPS: ", round(1/current_time_diff, 0), "\n")
-        if(print_player_hp) {
-            cat("\033[H\033[25C")
-            # coloured hp bar
-            cat("Player HP: ", get_player_hp_bar(), "\n")
-            print_player_hp <<- FALSE
+    { # ---WORLD MAP FUNCTIONS---
+        place_room <- function(row, col) {
+            world_map[row:(row+SINGLE_ROOM_H-1), col:(col+SINGLE_ROOM_W-1)] <<- sample(rooms_selection_list, 1)[[1]]
         }
-    }
 
-    draw_world <- function() {
-        # Cut the world_map matrix around the player
-        viewport <- world_map[(player$y-OFFSET):(player$y+OFFSET), (player$x-OFFSET):(player$x+OFFSET)]
-
-        # Draw player in the center of the viewport
-        viewport[OFFSET+1, OFFSET+1] <- "@"
-        if(sword_slash[1] != 0 || sword_slash[2] != 0) {
-            viewport[sword_slash[1] + OFFSET + 1, sword_slash[2] + OFFSET + 1] <- "/"
-            sword_visibility <<- sword_visibility - 1
-            if(sword_visibility == 0) {
-                sword_slash <<- c(0, 0)
+        fill_world_with_rooms <- function() {
+            for(y in 0:2){
+                for(x in 0:2){
+                    place_room(1+SINGLE_ROOM_H*y+OFFSET, 1+SINGLE_ROOM_W*x+OFFSET)
+                }
             }
         }
+
+        fix_wrongly_placed_doors <- function() {
+            # We move doors that are placed in walls to the correct position on the right/left/bottom/top of the room respectively
+            
+            for(y in seq(1+OFFSET+SINGLE_ROOM_H/2, 1+OFFSET+SINGLE_ROOM_H*2.5, SINGLE_ROOM_H)){
+                if(world_map[y, 1+OFFSET] == " "){
+                    world_map[y, 1+OFFSET] <<- "#"
+                    if(world_map[y, 1+OFFSET+SINGLE_ROOM_W] == " "){
+                        world_map[y+SINGLE_ROOM_H/2, 1+OFFSET+SINGLE_ROOM_W/2] <<- " "
+                    }
+                    else{
+                        world_map[y, 1+OFFSET+SINGLE_ROOM_W] <<- " "
+                    }
+                }
+            }
+            
+            for(x in seq(1+OFFSET+SINGLE_ROOM_W/2, 1+OFFSET+SINGLE_ROOM_W*2.5, SINGLE_ROOM_W)){
+                if(world_map[1+OFFSET, x] == " "){
+                    world_map[1+OFFSET, x] <<- "#"
+                    if(world_map[1+OFFSET+SINGLE_ROOM_H, x] == " "){
+                        if(world_map[1+OFFSET+SINGLE_ROOM_H/2, x+SINGLE_ROOM_W/2] == "##"){
+                            world_map[1+OFFSET+SINGLE_ROOM_H/2, x-SINGLE_ROOM_W/2] <<- " "
+                        }
+                        else{
+                            world_map[1+OFFSET+SINGLE_ROOM_H/2, x+SINGLE_ROOM_W/2] <<- " "
+                        }
+                    }
+                    else{
+                        world_map[1+OFFSET+SINGLE_ROOM_H, x] <<- " "
+                    }
+                }
+                
+                if(world_map[1+OFFSET+SINGLE_ROOM_H*3, x] == " "){
+                    world_map[1+OFFSET+SINGLE_ROOM_H*3, x] <<- "#"
+                    if(world_map[1+OFFSET+SINGLE_ROOM_H*2, x] == " "){
+                        world_map[1+OFFSET+SINGLE_ROOM_H*2.5, x+SINGLE_ROOM_W/2] <<- " "
+                    }
+                    else{
+                        world_map[1+OFFSET+SINGLE_ROOM_H*2, x] <<- " "
+                    }
+                }
+            }
+        }
+    }
     
-        # Apply colours to the viewport from the colour palette
-        coloured_viewport <- matrix(COLOUR_PALETTE[viewport], nrow = OFFSET*2+1, ncol=OFFSET*2+1)
+    { # ---INPUT FUNCTIONS---
+        check_input <- function() {
+            tcl("update", "idletasks") # Clear any pending events
 
-        # Convert the coloured viewport to a single string
-        row_strings <- apply(coloured_viewport, 1, paste, collapse = "")
-        final_frame <- paste(row_strings, collapse = '\n')
-
-        # Move the cursor to the top-left corner, delay and print the frame
-        print_side_data()
-        cat("\033[H")
-        cat(final_frame)
-        cat('\n')
+            # key events
+            switch(
+                current_key,
+                "w" = {player_move(-1, 0)},
+                "s" = {player_move(1, 0)},
+                "d" = {player_move(0, 1)},
+                "a" = {player_move(0, -1)},
+                "left" = {slash_sword(0, -1)},
+                "right" = {slash_sword(0, 1)},
+                "up" = {slash_sword(-1, 0)},
+                "down" = {slash_sword(1, 0)},
+                "p" = {{player$hp <<- player$hp - 10; print_player_hp <<- TRUE}},
+                "q" = {running <<- FALSE}
+            )
+            current_key <<- " "
+        }
     }
+
+    { # ---ENEMY FUNCTIONS---
+        get_enemies_from_world_map <- function() {
+            for(y in (OFFSET+1):(nrow(world_map)-OFFSET)){
+                for(x in (OFFSET+1):(ncol(world_map)-OFFSET)){
+                    if(world_map[y, x] %in% c("x", "X", "B")){
+                        enemies[[length(enemies)+1]] <<- list(type = world_map[y, x], y = y, x = x)
+                        world_map[y, x] <<- " "
+                    }
+                }
+            }
+        }
+    }
+
+    { # ---PLAYER FUNCTIONS---
+        player_move <- function(y_offset, x_offset) {
+            # check if there is collide object at new position or an enemy
+            if(!(world_map[player$y + y_offset, player$x + x_offset] %in% collide_objects) && 
+               !(any(sapply(enemies, function(enemy) enemy$y == player$y + y_offset && enemy$x == player$x + x_offset)))
+            ) {
+                player$x <<- player$x + x_offset
+                player$y <<- player$y + y_offset
+            }
+        }
+
+        slash_sword <- function(y_offset, x_offset) {
+            sword_slash <<- c(y_offset, x_offset)
+            for(enemy in enemies) {
+                if(enemy$y == player$y + sword_slash[1] && enemy$x == player$x + sword_slash[2]) {
+                    enemies <<- enemies[-which(sapply(enemies, function(x) x$y == enemy$y && x$x == enemy$x))]
+                    break
+                }
+            }
+            sword_visibility <<- TRUE
+        }
+    }
+
+    { # ---SIDE DATA FUNCTIONS---
+        get_player_hp_bar <- function() {
+            hp_bar <- paste(rep(COLOUR_PALETTE["█"], player$hp/5), collapse = "")
+            hp_bar <- paste(hp_bar, paste(rep(COLOUR_PALETTE["░"], player$max_hp/5 - player$hp/5), collapse = ""), sep = "")
+            return(hp_bar)
+        }
+
+        print_side_data <- function() {
+            # side data - printed at column 15
+            cat("\033[H\033[15C")
+            cat("FPS: ", round(1/current_time_diff, 0), "\n")
+            if(print_player_hp) {
+                cat("\033[H\033[25C")
+                # coloured hp bar
+                cat("Player HP: ", get_player_hp_bar(), "\n")
+                print_player_hp <<- FALSE
+            }
+        }
+    }
+
+    { # ---DRAW FUNCTIONS---
+        get_viewport <- function(world_map) {
+            return(world_map[(player$y-OFFSET):(player$y+OFFSET), (player$x-OFFSET):(player$x+OFFSET)])
+        }
+
+        draw_player <- function(viewport) {
+            viewport[OFFSET+1, OFFSET+1] <- "@"
+            return(viewport)
+        }
+
+        draw_sword <- function(viewport) {
+            if(sword_visibility) {
+                viewport[sword_slash[1] + OFFSET + 1, sword_slash[2] + OFFSET + 1] <- "/"
+                sword_visibility <<- FALSE
+            }
+            return(viewport)
+        }
+
+        draw_enemies <- function(viewport) {
+            # draw only enemies visible in the viewport (within OFFSET range)
+            for(enemy in enemies[]) {
+                if(abs(enemy$y - player$y) <= OFFSET && abs(enemy$x - player$x) <= OFFSET) {
+                    viewport[enemy$y - player$y + OFFSET + 1, enemy$x - player$x + OFFSET + 1] <- enemy$type
+                }
+            }
+            return(viewport)
+        }
+
+        colour_viewport <- function(viewport) {
+            return(matrix(COLOUR_PALETTE[viewport], nrow = OFFSET*2+1, ncol=OFFSET*2+1))
+        }
+
+        draw_world <- function() {
+            viewport <- get_viewport(world_map)
+            viewport <- draw_player(viewport)
+            viewport <- draw_sword(viewport)
+            viewport <- draw_enemies(viewport)
+            coloured_viewport <- colour_viewport(viewport)
+
+            # Convert the coloured viewport to a single string
+            row_strings <- apply(coloured_viewport, 1, paste, collapse = "")
+            final_frame <- paste(row_strings, collapse = '\n')
+
+            # Move the cursor to the top-left corner, delay and print the frame
+            print_side_data()
+            cat("\033[H")
+            cat(final_frame)
+            cat('\n')
+        }
+    }
+
+    
 
     main_loop <- function(){
         # Hide the cursor, clear the screen and move the cursor to the top-left corner
         cat("\033[?25l\033[2J\033[H") 
+        fill_world_with_rooms()
+        fix_wrongly_placed_doors()
+        get_enemies_from_world_map()
 
         # Show the cursor, reset colours and destroy the controller when the function exits or game crashes
         on.exit({
@@ -148,7 +259,7 @@ library(tcltk)
     }
 }
 
-{ # ---GLOBAL VALUES---
+{ # ---GLOBAL DATA---
     { # ---GAME STATE---
         running <- TRUE
         TARGET_TICK_TIME <- 0.05
@@ -166,20 +277,16 @@ library(tcltk)
             "B" = wrap_colour("X", fg = c(255, 0, 0), bg = c(0, 0, 0)),             # red / black               # high enemy
             "/" = wrap_colour("/", fg = c(255, 255, 255)),                          # white / none              # sword slash
             "█" = wrap_colour("█", fg = c(255, 0, 0)),                              # red / none                # hp bar
-            "░" = wrap_colour("░", fg = c(100, 0, 0))                               # dark red / none           # hp bar empty
+            "░" = wrap_colour("░", fg = c(100, 0, 0)),                              # dark red / none           # hp bar empty
+            "1" = wrap_colour("1", fg = c(255, 255, 255)),                          # white / none              # debug text
+            "2" = wrap_colour("2", fg = c(255, 255, 255)),                          # white / none              # debug text
+            "3" = wrap_colour("3", fg = c(255, 255, 255)),                          # white / none              # debug text
+            "4" = wrap_colour("4", fg = c(255, 255, 255)),                          # white / none              # debug text
+            "5" = wrap_colour("5", fg = c(255, 255, 255)),                          # white / none              # debug text
+            "6" = wrap_colour("6", fg = c(255, 255, 255)),                          # white / none              # debug text
+            "7" = wrap_colour("7", fg = c(255, 255, 255))                           # white / none              # debug text
         )
 
-        #COLOUR_PALETTE <- c(                                                        # foreground / background   # name
-        #    "##" = wrap_colour("#"),                         # dark gray / none          # world_map border
-        #    "#" = wrap_colour("#"),                          # dark gray / none          # room border
-        #    " " = " ",                                                              # none / none               # empty space
-        #    "@" = wrap_colour("@"),                              # green / none              # player
-        #    "!" = wrap_colour("!"),                            # yellow / none             # random drawing
-        #    "x" = wrap_colour("x"),                              # red / none                # basic enemy
-        #    "X" = wrap_colour("X"),          # red / dark grey           # mid enemy
-        #    "B" = wrap_colour("B"),              # red / black               # high enemy
-        #    "/" = wrap_colour("/")                         # white / none              # sword slash
-        #)
         collide_objects <- c("#", "##", "x", "X", "B")
     }
 
@@ -256,73 +363,10 @@ library(tcltk)
 
             }
         }
-
-        { # Filling the world with rooms
-            for(y in 0:2){
-                for(x in 0:2){
-                    place_room(1+SINGLE_ROOM_H*y+OFFSET, 1+SINGLE_ROOM_W*x+OFFSET)
-                }
-            }
-        }                
-
-        { # Fix wrongly placed doors
-            # We move doors that are placed in walls to the correct position on the right/left/bottom/top of the room respectively
-            
-            for(y in seq(1+OFFSET+SINGLE_ROOM_H/2, 1+OFFSET+SINGLE_ROOM_H*2.5, SINGLE_ROOM_H)){
-                if(world_map[y, 1+OFFSET] == " "){
-                    world_map[y, 1+OFFSET] <- "#"
-                    if(world_map[y, 1+OFFSET+SINGLE_ROOM_W] == " "){
-                        world_map[y+SINGLE_ROOM_H/2, 1+OFFSET+SINGLE_ROOM_W/2] <- " "
-                    }
-                    else{
-                        world_map[y, 1+OFFSET+SINGLE_ROOM_W] <- " "
-                    }
-                }
-            }
-            
-            for(x in seq(1+OFFSET+SINGLE_ROOM_W/2, 1+OFFSET+SINGLE_ROOM_W*2.5, SINGLE_ROOM_W)){
-                if(world_map[1+OFFSET, x] == " "){
-                    world_map[1+OFFSET, x] <- "#"
-                    if(world_map[1+OFFSET+SINGLE_ROOM_H, x] == " "){
-                        if(world_map[1+OFFSET+SINGLE_ROOM_H/2, x+SINGLE_ROOM_W/2] == "##"){
-                            world_map[1+OFFSET+SINGLE_ROOM_H/2, x-SINGLE_ROOM_W/2] <- " "
-                        }
-                        else{
-                            world_map[1+OFFSET+SINGLE_ROOM_H/2, x+SINGLE_ROOM_W/2] <- " "
-                        }
-                    }
-                    else{
-                        world_map[1+OFFSET+SINGLE_ROOM_H, x] <- " "
-                    }
-                }
-                
-                if(world_map[1+OFFSET+SINGLE_ROOM_H*3, x] == " "){
-                    world_map[1+OFFSET+SINGLE_ROOM_H*3, x] <- "#"
-                    if(world_map[1+OFFSET+SINGLE_ROOM_H*2, x] == " "){
-                        world_map[1+OFFSET+SINGLE_ROOM_H*2.5, x+SINGLE_ROOM_W/2] <- " "
-                    }
-                    else{
-                        world_map[1+OFFSET+SINGLE_ROOM_H*2, x] <- " "
-                    }
-                }
-            }
-        }
     }
 
     { # ---NPCs---
-        { # get enemies list from world map
-            enemies <- list()
-            for(y in (OFFSET+1):(nrow(world_map)-OFFSET)){
-                for(x in (OFFSET+1):(ncol(world_map)-OFFSET)){
-                    if(world_map[y, x] == "x"){
-                        enemies[[length(enemies)+1]] <- list(type = "x", y = y, x = x)
-                    }
-                    else if(world_map[y, x] == "X"){
-                        enemies[[length(enemies)+1]] <- list(type = "X", y = y, x = x)
-                    }
-                }
-            }
-        }
+        enemies <- list()
     }
 
     { # ---PLAYER---
@@ -335,17 +379,11 @@ library(tcltk)
         )
         print_player_hp <- TRUE
 
-        get_player_hp_bar <- function() {
-            hp_bar <- paste(rep(COLOUR_PALETTE["█"], player$hp/5), collapse = "")
-            hp_bar <- paste(hp_bar, paste(rep(COLOUR_PALETTE["░"], player$max_hp/5 - player$hp/5), collapse = ""), sep = "")
-            return(hp_bar)
-        }
-
-        sword_visibility <- 0
+        sword_visibility <- FALSE
         sword_slash <- c(0, 0)
     }
 }
- 
+
 
 
 main_loop()
