@@ -1,5 +1,8 @@
 library(tcltk)
 
+# Ctrl+shift+[ to fold all brackets
+# Ctrl+shift+] to unfold all brackets
+
 
 { # ---TCLTK AND KEY BINDINGS
     current_key <- ""
@@ -98,25 +101,25 @@ library(tcltk)
             # world_map is full size map where each room has size SINGLE_ROOM_H and SINGLE_ROOM_W
             if(row > 1 && map_preview_matrix[row-1, col] == map_preview_matrix[row, col] + 1) {
                 # Place door above
-                world_map[OFFSET + row * (SINGLE_ROOM_H-1) - SINGLE_ROOM_H + 2, OFFSET + col * (SINGLE_ROOM_W-1) - SINGLE_ROOM_W%/%2 + 1] <<- "!"
+                world_map[OFFSET + row * (SINGLE_ROOM_H-1) - SINGLE_ROOM_H + 2, OFFSET + col * (SINGLE_ROOM_W-1) - SINGLE_ROOM_W%/%2 + 1] <<- " "
 
                 place_doors(row-1, col)
             }
             if(row < MAP_ROOM_COUNT_Y && map_preview_matrix[row+1, col] == map_preview_matrix[row, col] + 1) {
                 # Place door below
-                world_map[OFFSET + row * (SINGLE_ROOM_H-1) + 1, OFFSET + col * (SINGLE_ROOM_W-1) - SINGLE_ROOM_W%/%2 + 1] <<- "!"
+                world_map[OFFSET + row * (SINGLE_ROOM_H-1) + 1, OFFSET + col * (SINGLE_ROOM_W-1) - SINGLE_ROOM_W%/%2 + 1] <<- " "
 
                 place_doors(row+1, col)
             }
             if(col > 1 && map_preview_matrix[row, col-1] == map_preview_matrix[row, col] + 1) {
                 # Place door left
-                world_map[OFFSET + row * (SINGLE_ROOM_H-1) - SINGLE_ROOM_H%/%2 + 1, OFFSET + col * (SINGLE_ROOM_W-1) - SINGLE_ROOM_W + 2] <<- "!"
+                world_map[OFFSET + row * (SINGLE_ROOM_H-1) - SINGLE_ROOM_H%/%2 + 1, OFFSET + col * (SINGLE_ROOM_W-1) - SINGLE_ROOM_W + 2] <<- " "
 
                 place_doors(row, col-1)
             }
             if(col < MAP_ROOM_COUNT_X && map_preview_matrix[row, col+1] == map_preview_matrix[row, col] + 1) {
                 # Place door right
-                world_map[OFFSET + row * (SINGLE_ROOM_H-1) - SINGLE_ROOM_H%/%2 + 1, OFFSET + col * (SINGLE_ROOM_W-1) + 1] <<- "!"
+                world_map[OFFSET + row * (SINGLE_ROOM_H-1) - SINGLE_ROOM_H%/%2 + 1, OFFSET + col * (SINGLE_ROOM_W-1) + 1] <<- " "
 
                 place_doors(row, col+1)
             }
@@ -181,6 +184,26 @@ library(tcltk)
     }
 
     { # ---PLAYER FUNCTIONS---
+        # player sense aura - distance from player to all cells in 7 cells radius for Enemy pathfinding
+        update_player_sense_aura <- function(){
+            dist_map <<- matrix(Inf, nrow = nrow(world_map), ncol = ncol(world_map))
+            dist_map[player$y, player$x] <<- 0
+            for(i in 1:7){
+                up <<- rbind(rep(Inf, ncol(world_map)), dist_map[-nrow(dist_map), ])
+                down <<- rbind(dist_map[-1, ], rep(Inf, ncol(world_map)))
+                left <<- cbind(rep(Inf, nrow(world_map)), dist_map[, -ncol(dist_map)])
+                right <<- cbind(dist_map[, -1], rep(Inf, nrow(world_map)))
+                
+                dist_map <<- pmin(dist_map, up + 1, down + 1, left + 1, right + 1)
+
+                dist_map[world_map == "#"] <<- Inf
+            }
+
+            #new_dist_map <- matrix(Inf, nrow = nrow(world_map), ncol = ncol(world_map))
+            #new_dist_map[(player$y-OFFSET+1):(player$y+OFFSET-1), (player$x-OFFSET+1):(player$x+OFFSET-1)] <- dist_map[(player$y-OFFSET+1):(player$y+OFFSET-1), (player$x-OFFSET+1):(player$x+OFFSET-1)]
+            #dist_map <<- new_dist_map
+        }
+
         player_move <- function(y_offset, x_offset) {
             # check if there is collide object at new position or an enemy
             if(!(world_map[player$y + y_offset, player$x + x_offset] %in% collide_objects) && 
@@ -188,6 +211,8 @@ library(tcltk)
             ) {
                 player$x <<- player$x + x_offset
                 player$y <<- player$y + y_offset
+
+                update_player_sense_aura()
             }
         }
 
@@ -260,13 +285,19 @@ library(tcltk)
 
         draw_world <- function() {
             viewport <- get_viewport(world_map)
-            cp = c("##" = " ", " " = " ", "@" = "@", "!"="!", "#"="#", "1"="1", "2"="2", "3"="3", "4"="4", "5"="5", "6"="6", "7"="7", "8"="8", "9"="9")
-            viewport <- matrix(cp[viewport], nrow = OFFSET*2+1, ncol=OFFSET*2+1)
+            viewport <- draw_sword(viewport)
+            viewport <- draw_enemies(viewport)
+            viewport <- colour_viewport(viewport, TRUE)
 
+            # Add player sense aura to viewport
+            #for(y in (player$y-OFFSET):(player$y+OFFSET)) {
+            #    for(x in (player$x-OFFSET):(player$x+OFFSET)) {
+            #        if(dist_map[y, x] < 60) {
+            #            viewport[y - player$y + OFFSET + 1, x - player$x + OFFSET + 1] <- dist_map[y, x] %% 10
+            #        }
+            #    }
+            #}
             viewport <- draw_player(viewport)
-            #viewport <- draw_sword(viewport)
-            #viewport <- draw_enemies(viewport)
-            #viewport <- colour_viewport(viewport, TRUE)
 
             # Convert the coloured viewport to a single string
             row_strings <- apply(viewport, 1, paste, collapse = "")
@@ -278,8 +309,6 @@ library(tcltk)
             cat(final_frame)
         }
     }
-
-    
 
     main_loop <- function(){
         # Hide the cursor, clear the screen and move the cursor to the top-left corner
@@ -318,7 +347,7 @@ library(tcltk)
 { # ---GLOBAL DATA---
     { # ---GAME STATE---
         running <- TRUE
-        TARGET_TICK_TIME <- 0.05
+        TARGET_TICK_TIME <- 0.1
         begin_time <- end_time <- Sys.time()
         current_time_diff <- 0
 
@@ -343,8 +372,8 @@ library(tcltk)
             "7" = wrap_colour("7", fg = c(255, 255, 255))                           # white / none              # debug text
         )
 
-        #collide_objects <- c("#", "##", "x", "X", "B")
-        collide_objects <- c()
+        collide_objects <- c("#", "##", "x", "X", "B")
+        #collide_objects <- c()
     }
 
     { # ---ROOMS AND MAP---
@@ -424,6 +453,66 @@ library(tcltk)
                         ...!!!............./
                         .................../
                         .................../
+                        ...................",
+                    room_4 = "
+                        .................../
+                        .................../
+                        .................../
+                        .................../
+                        .................../
+                        .................../
+                        .................../
+                        .................../
+                        .................../
+                        .................../
+                        .................../
+                        .................../
+                        .................../
+                        .................../
+                        .................../
+                        .................../
+                        .................../
+                        .................../
+                        ...................",
+                    room_5 = "
+                        .................../
+                        .................../
+                        ....#............../
+                        ...###............./
+                        ..#####............/
+                        ...###............./
+                        ....#............../
+                        .................../
+                        ...........##....../
+                        ..........####...../
+                        .........######..../
+                        ........########.../
+                        .......##########../
+                        .......##########../
+                        ........########.../
+                        .........######..../
+                        ..........####...../
+                        ...........##....../
+                        ...................",
+                    room_6 = "
+                        .................../
+                        .................../
+                        ...#############.../
+                        ...#...........#.../
+                        ...#...........#.../
+                        ...#..#######..#.../
+                        ...#..#.....#..#.../
+                        ...#..#.....#..#.../
+                        ...#..#.....#..#.../
+                        .................../
+                        .................../
+                        ...#############.../
+                        .................../
+                        .................../
+                        ...#############.../
+                        .................../
+                        .................../
+                        ...#############.../
                         ..................."
                 )
 
@@ -465,6 +554,8 @@ library(tcltk)
             atk = 15
         )
         print_player_hp <- TRUE
+
+        dist_map <- matrix(Inf, nrow = nrow(world_map), ncol = ncol(world_map))
 
         sword_visibility <- FALSE
         sword_slash <- c(0, 0)
