@@ -33,10 +33,10 @@ library(tcltk)
                 return(char)
             }
             else if(is.null(bg)) {
-                return(paste0("\033[38;2;", fg[[1]], ";", fg[[2]], ";", fg[[3]], "m", char, "\033[0m"))
+                return(paste0("\033[38;2;", fg[[1]], ";", fg[[2]], ";", fg[[3]], "m", char))
             }
             else {
-                return(paste0("\033[48;2;", bg[[1]], ";", bg[[2]], ";", bg[[3]], "m\033[38;2;", fg[[1]], ";", fg[[2]], ";", fg[[3]], "m", char, "\033[0m"))
+                return(paste0("\033[48;2;", bg[[1]], ";", bg[[2]], ";", bg[[3]], "m\033[38;2;", fg[[1]], ";", fg[[2]], ";", fg[[3]], "m", char))
             }
         }
     }
@@ -175,13 +175,41 @@ library(tcltk)
             for(y in (OFFSET+1):(nrow(world_map)-OFFSET)){
                 for(x in (OFFSET+1):(ncol(world_map)-OFFSET)){
                     if(world_map[y, x] %in% c("x", "X", "B")){
-                        enemies[[length(enemies)+1]] <<- list(type = world_map[y, x], y = y, x = x)
+                        enemies[nrow(enemies)+1,] <<- data.frame(symbol = world_map[y, x], y = y, x = x, move_cooldown = 0, max_move_cooldown = 3, hp = 10, max_hp = 10, atk = 1)
                         world_map[y, x] <<- " "
                     }
                 }
             }
         }
+
+        update_enemies <- function() {
+            for(i in seq_len(nrow(enemies))) {
+                if(enemies[i, "move_cooldown"] > 0) {
+                    enemies[i, "move_cooldown"] <<- enemies[i, "move_cooldown"] - 1
+                    next
+                }
+                if(dist_map[enemies[i, "y"], enemies[i, "x"]] <= 7) {
+                    if(dist_map[enemies[i, "y"]-1, enemies[i, "x"]] == dist_map[enemies[i, "y"], enemies[i, "x"]] - 1 &&
+                        dist_map[enemies[i, "y"]-1, enemies[i, "x"]] != 0) {
+                        enemies[i, "y"] <<- enemies[i, "y"] - 1
+                    }
+                    else if(dist_map[enemies[i, "y"]+1, enemies[i, "x"]] == dist_map[enemies[i, "y"], enemies[i, "x"]] - 1 &&
+                        dist_map[enemies[i, "y"]+1, enemies[i, "x"]] != 0) {
+                        enemies[i, "y"] <<- enemies[i, "y"] + 1
+                    }
+                    else if(dist_map[enemies[i, "y"], enemies[i, "x"]-1] == dist_map[enemies[i, "y"], enemies[i, "x"]] - 1 &&
+                        dist_map[enemies[i, "y"], enemies[i, "x"]-1] != 0) {
+                        enemies[i, "x"] <<- enemies[i, "x"] - 1
+                    }
+                    else if(dist_map[enemies[i, "y"], enemies[i, "x"]+1] == dist_map[enemies[i, "y"], enemies[i, "x"]] - 1 &&
+                        dist_map[enemies[i, "y"], enemies[i, "x"]+1] != 0) {
+                        enemies[i, "x"] <<- enemies[i, "x"] + 1
+                    }
+                }
+            }
+        }
     }
+        
 
     { # ---PLAYER FUNCTIONS---
         # player sense aura - distance from player to all cells in 7 cells radius for Enemy pathfinding
@@ -207,7 +235,7 @@ library(tcltk)
         player_move <- function(y_offset, x_offset) {
             # check if there is collide object at new position or an enemy
             if(!(world_map[player$y + y_offset, player$x + x_offset] %in% collide_objects) && 
-               !(any(sapply(enemies, function(enemy) enemy$y == player$y + y_offset && enemy$x == player$x + x_offset)))
+               !(any(enemies$y == player$y + y_offset & enemies$x == player$x + x_offset))
             ) {
                 player$x <<- player$x + x_offset
                 player$y <<- player$y + y_offset
@@ -218,9 +246,9 @@ library(tcltk)
 
         slash_sword <- function(y_offset, x_offset) {
             sword_slash <<- c(y_offset, x_offset)
-            for(enemy in enemies) {
-                if(enemy$y == player$y + sword_slash[1] && enemy$x == player$x + sword_slash[2]) {
-                    enemies <<- enemies[-which(sapply(enemies, function(x) x$y == enemy$y && x$x == enemy$x))]
+            for(i in 1:(nrow(enemies))) {
+                if(enemies[i, "y"] == player$y + sword_slash[1] && enemies[i, "x"] == player$x + sword_slash[2]) {
+                    enemies <<- enemies[-i, ]
                     break
                 }
             }
@@ -268,9 +296,9 @@ library(tcltk)
 
         draw_enemies <- function(viewport) {
             # draw only enemies visible in the viewport (within OFFSET range)
-            for(enemy in enemies[]) {
-                if(abs(enemy$y - player$y) <= OFFSET && abs(enemy$x - player$x) <= OFFSET) {
-                    viewport[enemy$y - player$y + OFFSET + 1, enemy$x - player$x + OFFSET + 1] <- enemy$type
+            for(i in seq_len(nrow(enemies))) {
+                if(abs(enemies[i, "y"] - player$y) <= OFFSET && abs(enemies[i, "x"] - player$x) <= OFFSET) {
+                    viewport[enemies[i, "y"] - player$y + OFFSET + 1, enemies[i, "x"] - player$x + OFFSET + 1] <- enemies[i, "symbol"]
                 }
             }
             return(viewport)
@@ -287,8 +315,6 @@ library(tcltk)
             viewport <- get_viewport(world_map)
             viewport <- draw_sword(viewport)
             viewport <- draw_enemies(viewport)
-            viewport <- colour_viewport(viewport, TRUE)
-
             # Add player sense aura to viewport
             #for(y in (player$y-OFFSET):(player$y+OFFSET)) {
             #    for(x in (player$x-OFFSET):(player$x+OFFSET)) {
@@ -298,6 +324,8 @@ library(tcltk)
             #    }
             #}
             viewport <- draw_player(viewport)
+            viewport <- colour_viewport(viewport, TRUE)
+
 
             # Convert the coloured viewport to a single string
             row_strings <- apply(viewport, 1, paste, collapse = "")
@@ -329,6 +357,7 @@ library(tcltk)
         # Main game loop
         while(running){
             check_input()
+            update_enemies()
             draw_world()
 
             end_time <<- Sys.time()
@@ -357,9 +386,9 @@ library(tcltk)
             " " = " ",                                                              # none / none               # empty space
             "@" = wrap_colour("@", fg = c(0, 255, 0)),                              # green / none              # player
             "!" = wrap_colour("!", fg = c(255, 255, 0)),                            # yellow / none             # random drawing
-            "x" = wrap_colour("x", fg = c(255, 0, 0)),                              # red / none                # basic enemy
-            "X" = wrap_colour("x", fg = c(255, 0, 0), bg = c(35, 35, 35)),          # red / dark grey           # mid enemy
-            "B" = wrap_colour("X", fg = c(255, 0, 0), bg = c(0, 0, 0)),             # red / black               # high enemy
+            "x" = wrap_colour("x", fg = c(150, 0, 0)),                              # red / none                # basic enemy
+            "X" = wrap_colour("x", fg = c(255, 0, 0)),          # red / dark grey           # mid enemy
+            "B" = wrap_colour("X", fg = c(255, 0, 0)),             # red / black               # high enemy
             "/" = wrap_colour("/", fg = c(255, 255, 255)),                          # white / none              # sword slash
             "█" = wrap_colour("█", fg = c(255, 0, 0)),                              # red / none                # hp bar
             "░" = wrap_colour("░", fg = c(100, 0, 0)),                              # dark red / none           # hp bar empty
@@ -542,7 +571,16 @@ library(tcltk)
     }
 
     { # ---NPCs---
-        enemies <- list()
+        enemies <- data.frame(
+            symbol = character(),
+            y = integer(),
+            x = integer(),
+            move_cooldown = integer(),
+            max_move_cooldown = integer(),
+            hp = integer(),
+            max_hp = integer(),
+            atk = integer()
+        )
     }
 
     { # ---PLAYER---
