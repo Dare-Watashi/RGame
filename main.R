@@ -33,10 +33,10 @@ library(tcltk)
                 return(char)
             }
             else if(is.null(bg)) {
-                return(paste0("\033[38;2;", fg[[1]], ";", fg[[2]], ";", fg[[3]], "m", char))
+                return(paste0("\033[38;2;", fg[[1]], ";", fg[[2]], ";", fg[[3]], "m", char, "\033[0m"))
             }
             else {
-                return(paste0("\033[48;2;", bg[[1]], ";", bg[[2]], ";", bg[[3]], "m\033[38;2;", fg[[1]], ";", fg[[2]], ";", fg[[3]], "m", char))
+                return(paste0("\033[48;2;", bg[[1]], ";", bg[[2]], ";", bg[[3]], "m\033[38;2;", fg[[1]], ";", fg[[2]], ";", fg[[3]], "m", char, "\033[0m"))
             }
         }
     }
@@ -247,6 +247,9 @@ library(tcltk)
         slash_sword <- function(y_offset, x_offset) {
             sword_slash <<- c(y_offset, x_offset)
             for(i in 1:(nrow(enemies))) {
+                if(is.na(enemies[i, "y"]) || is.na(enemies[i, "x"])) {
+                    next
+                }
                 if(enemies[i, "y"] == player$y + sword_slash[1] && enemies[i, "x"] == player$x + sword_slash[2]) {
                     enemies <<- enemies[-i, ]
                     break
@@ -273,6 +276,12 @@ library(tcltk)
                 cat("Player HP: ", get_player_hp_bar(), "\n")
                 print_player_hp <<- FALSE
             }
+            #cat("\033[H\033[45C")
+            #cat("Debug time: ", difftime(end_debug_time, start_debug_time, units = "sec")*1000, "ms\n")
+            #cat("\033[45C")
+            #cat("Max debug time: ", max_time, "ms\n")
+            #cat("\033[45C")
+            #cat("Min debug time: ", min_time, "ms\n")
         }
     }
 
@@ -296,11 +305,19 @@ library(tcltk)
 
         draw_enemies <- function(viewport) {
             # draw only enemies visible in the viewport (within OFFSET range)
-            for(i in seq_len(nrow(enemies))) {
-                if(abs(enemies[i, "y"] - player$y) <= OFFSET && abs(enemies[i, "x"] - player$x) <= OFFSET) {
-                    viewport[enemies[i, "y"] - player$y + OFFSET + 1, enemies[i, "x"] - player$x + OFFSET + 1] <- enemies[i, "symbol"]
-                }
+            
+            is_visible <- abs(enemies$y - player$y) <= OFFSET & abs(enemies$x - player$x) <= OFFSET
+
+            if(!any(is_visible)) {
+                return(viewport)
             }
+
+            visible_enemies <- enemies[is_visible, ]
+            visible_enemies_y <- visible_enemies$y - player$y + OFFSET + 1
+            visible_enemies_x <- visible_enemies$x - player$x + OFFSET + 1
+
+            viewport[cbind(visible_enemies_y, visible_enemies_x)] <- visible_enemies$symbol
+            
             return(viewport)
         }
 
@@ -313,8 +330,8 @@ library(tcltk)
 
         draw_world <- function() {
             viewport <- get_viewport(world_map)
-            viewport <- draw_sword(viewport)
             viewport <- draw_enemies(viewport)
+            viewport <- draw_sword(viewport)
             # Add player sense aura to viewport
             #for(y in (player$y-OFFSET):(player$y+OFFSET)) {
             #    for(x in (player$x-OFFSET):(player$x+OFFSET)) {
@@ -327,14 +344,20 @@ library(tcltk)
             viewport <- colour_viewport(viewport, TRUE)
 
 
-            # Convert the coloured viewport to a single string
-            row_strings <- apply(viewport, 1, paste, collapse = "")
-            final_frame <- paste(row_strings, collapse = '\n')
-
+            # Convert the coloured viewport to a single string - v2.0   ~0.1ms - ~0.5ms
+            # cbind adds a newline character to each row
+            # t() transposes the matrix so rows become columns
+            # this is becouse paste() prints column by column by default, so now t() causes rows to become columns
+            final_frame <- paste(t(cbind(viewport, "\n")), collapse = "")
+            
             # Move the cursor to the top-left corner and print the frame
             print_side_data()
             cat("\033[H")
             cat(final_frame)
+            # coloured wall ~55ms - ~744ms
+            # uncoloured wall ~18ms - ~452ms    - current
+            # GPU accelerated terminal ~19ms - ~552ms
+            
         }
     }
 
@@ -358,7 +381,15 @@ library(tcltk)
         while(running){
             check_input()
             update_enemies()
+
+            # colour-wrap function \RGB - ~25ms - ~550ms
+            # implicit colour \16c - ~20ms - ~378ms
             draw_world()
+
+            #start_debug_time <<- Sys.time()
+            #end_debug_time <<- Sys.time()
+            #max_time <<- max(max_time, difftime(end_debug_time, start_debug_time, units = "sec")*1000)
+            #min_time <<- min(min_time, difftime(end_debug_time, start_debug_time, units = "sec")*1000)
 
             end_time <<- Sys.time()
             current_time_diff <<- as.numeric(difftime(end_time, begin_time, units = "secs"))
@@ -376,29 +407,56 @@ library(tcltk)
 { # ---GLOBAL DATA---
     { # ---GAME STATE---
         running <- TRUE
-        TARGET_TICK_TIME <- 0.1
+        TARGET_TICK_TIME <- 0.05
+        start_debug_time <- Sys.time()
+        end_debug_time <- Sys.time()
+        max_time <- 0
+        min_time <- Inf
+
         begin_time <- end_time <- Sys.time()
         current_time_diff <- 0
 
-        COLOUR_PALETTE <- c(                                                        # foreground / background   # name
-            "##" = wrap_colour(" ", fg = c(100, 100, 100)),                         # dark gray / none          # world_map border
-            "#" = wrap_colour("#", fg = c(100, 100, 100)),                          # dark gray / none          # room border
-            " " = " ",                                                              # none / none               # empty space
-            "@" = wrap_colour("@", fg = c(0, 255, 0)),                              # green / none              # player
-            "!" = wrap_colour("!", fg = c(255, 255, 0)),                            # yellow / none             # random drawing
-            "x" = wrap_colour("x", fg = c(150, 0, 0)),                              # red / none                # basic enemy
-            "X" = wrap_colour("x", fg = c(255, 0, 0)),          # red / dark grey           # mid enemy
-            "B" = wrap_colour("X", fg = c(255, 0, 0)),             # red / black               # high enemy
-            "/" = wrap_colour("/", fg = c(255, 255, 255)),                          # white / none              # sword slash
-            "█" = wrap_colour("█", fg = c(255, 0, 0)),                              # red / none                # hp bar
-            "░" = wrap_colour("░", fg = c(100, 0, 0)),                              # dark red / none           # hp bar empty
-            "1" = wrap_colour("1", fg = c(255, 255, 255)),                          # white / none              # debug text
-            "2" = wrap_colour("2", fg = c(255, 255, 255)),                          # white / none              # debug text
-            "3" = wrap_colour("3", fg = c(255, 255, 255)),                          # white / none              # debug text
-            "4" = wrap_colour("4", fg = c(255, 255, 255)),                          # white / none              # debug text
-            "5" = wrap_colour("5", fg = c(255, 255, 255)),                          # white / none              # debug text
-            "6" = wrap_colour("6", fg = c(255, 255, 255)),                          # white / none              # debug text
-            "7" = wrap_colour("7", fg = c(255, 255, 255))                           # white / none              # debug text
+        #COLOUR_PALETTE <- c(                                                        # foreground / background   # name
+        #    "##" = wrap_colour(" ", fg = c(100, 100, 100)),                         # dark gray / none          # world_map border
+        #    "#" = "#", #wrap_colour("#", fg = c(100, 100, 100)),                          # dark gray / none          # room border
+        #    " " = " ",                                                              # none / none               # empty space
+        #    "@" = wrap_colour("@", fg = c(0, 255, 0)),                              # green / none              # player
+        #    "!" = wrap_colour("!", fg = c(255, 255, 0)),                            # yellow / none             # random drawing
+        #    "x" = wrap_colour("x", fg = c(150, 0, 0)),                              # red / none                # basic enemy
+        #    "X" = wrap_colour("x", fg = c(255, 0, 0)),          # red / dark grey           # mid enemy
+        #    "B" = wrap_colour("X", fg = c(255, 0, 0)),             # red / black               # high enemy
+        #    "/" = wrap_colour("/", fg = c(255, 255, 255)),                          # white / none              # sword slash
+        #    "█" = wrap_colour("█", fg = c(255, 0, 0)),                              # red / none                # hp bar
+        #    "░" = wrap_colour("░", fg = c(100, 0, 0)),                              # dark red / none           # hp bar empty
+        #    "1" = wrap_colour("1", fg = c(255, 255, 255)),                          # white / none              # debug text
+        #    "2" = wrap_colour("2", fg = c(255, 255, 255)),                          # white / none              # debug text
+        #    "3" = wrap_colour("3", fg = c(255, 255, 255)),                          # white / none              # debug text
+        #    "4" = wrap_colour("4", fg = c(255, 255, 255)),                          # white / none              # debug text
+        #    "5" = wrap_colour("5", fg = c(255, 255, 255)),                          # white / none              # debug text
+        #    "6" = wrap_colour("6", fg = c(255, 255, 255)),                          # white / none              # debug text
+        #    "7" = wrap_colour("7", fg = c(255, 255, 255))                           # white / none              # debug text
+        #)
+        
+        # implicit colour - no colour wrap
+        COLOUR_PALETTE = c(
+            "#" = "#",      # clear
+            "##" = " ",     # clear
+            " " = " ",      # clear
+            "@" = "\033[32m@\033[0m",      # green
+            "!" = "\033[33m!\033[0m",      # yellow
+            "x" = "\033[31mx\033[0m",      # red
+            "X" = "\033[31mx\033[0m",      # red
+            "B" = "\033[31mX\033[0m",      # red
+            "/" = "\033[37m/\033[0m",      # white
+            "█" = "█",      # red
+            "░" = "░",
+            "1" = "1",
+            "2" = "2",
+            "3" = "3",
+            "4" = "4",
+            "5" = "5",
+            "6" = "6",
+            "7" = "7"
         )
 
         collide_objects <- c("#", "##", "x", "X", "B")
