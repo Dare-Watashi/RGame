@@ -101,25 +101,25 @@ library(tcltk)
             # world_map is full size map where each room has size SINGLE_ROOM_H and SINGLE_ROOM_W
             if(row > 1 && map_preview_matrix[row-1, col] == map_preview_matrix[row, col] + 1) {
                 # Place door above
-                world_map[OFFSET + row * (SINGLE_ROOM_H-1) - SINGLE_ROOM_H + 2, OFFSET + col * (SINGLE_ROOM_W-1) - SINGLE_ROOM_W%/%2 + 1] <<- " "
+                world_map[OFFSET + row * (SINGLE_ROOM_H-1) - SINGLE_ROOM_H + 2, OFFSET + col * (SINGLE_ROOM_W-1) - SINGLE_ROOM_W%/%2 + 1] <<- "[]"
 
                 place_doors(row-1, col)
             }
             if(row < MAP_ROOM_COUNT_Y && map_preview_matrix[row+1, col] == map_preview_matrix[row, col] + 1) {
                 # Place door below
-                world_map[OFFSET + row * (SINGLE_ROOM_H-1) + 1, OFFSET + col * (SINGLE_ROOM_W-1) - SINGLE_ROOM_W%/%2 + 1] <<- " "
+                world_map[OFFSET + row * (SINGLE_ROOM_H-1) + 1, OFFSET + col * (SINGLE_ROOM_W-1) - SINGLE_ROOM_W%/%2 + 1] <<- "[]"
 
                 place_doors(row+1, col)
             }
             if(col > 1 && map_preview_matrix[row, col-1] == map_preview_matrix[row, col] + 1) {
                 # Place door left
-                world_map[OFFSET + row * (SINGLE_ROOM_H-1) - SINGLE_ROOM_H%/%2 + 1, OFFSET + col * (SINGLE_ROOM_W-1) - SINGLE_ROOM_W + 2] <<- " "
+                world_map[OFFSET + row * (SINGLE_ROOM_H-1) - SINGLE_ROOM_H%/%2 + 1, OFFSET + col * (SINGLE_ROOM_W-1) - SINGLE_ROOM_W + 2] <<- "[]"
 
                 place_doors(row, col-1)
             }
             if(col < MAP_ROOM_COUNT_X && map_preview_matrix[row, col+1] == map_preview_matrix[row, col] + 1) {
                 # Place door right
-                world_map[OFFSET + row * (SINGLE_ROOM_H-1) - SINGLE_ROOM_H%/%2 + 1, OFFSET + col * (SINGLE_ROOM_W-1) + 1] <<- " "
+                world_map[OFFSET + row * (SINGLE_ROOM_H-1) - SINGLE_ROOM_H%/%2 + 1, OFFSET + col * (SINGLE_ROOM_W-1) + 1] <<- "[]"
 
                 place_doors(row, col+1)
             }
@@ -137,6 +137,47 @@ library(tcltk)
                 }
             }
         }
+
+        # Create a circular mask for the player's field of view
+        create_circle_mask <- function() {
+            y_grid <- row(matrix(0, nrow = OFFSET*2+1, ncol = OFFSET*2+1))
+            x_grid <- col(matrix(0, nrow = OFFSET*2+1, ncol = OFFSET*2+1))
+            dist_squared <- (x_grid - OFFSET - 1)^2 + (y_grid - OFFSET - 1)^2
+            circle_mask <- dist_squared <= light_radius^2
+            return(circle_mask)
+        }
+
+        # Get indices of cells that are within the player's field of view
+        get_ray_indices <- function(y, x) {
+            dist <- max(abs(y - (OFFSET + 1)), abs(x - (OFFSET + 1)))
+            
+            if(dist <= 1) {
+                return(return(integer(0)))
+            }
+
+            y_pts <- round(seq((OFFSET + 1), y, length.out = dist + 1) + 0.01)
+            x_pts <- round(seq((OFFSET + 1), x, length.out = dist + 1) + 0.01)
+
+            y_between <- y_pts[2:(dist)]
+            x_between <- x_pts[2:(dist)]
+
+            indices <- (x_between - 1) * (OFFSET*2 + 1) + y_between
+            
+            return(indices)
+        }
+
+        # Precalculate ray casting indices for all possible directions
+        precalculate_ray_indices <- function() {
+            ray_indices <- vector("list", (OFFSET*2 + 1) * (OFFSET*2 + 1))
+            for(x in 1:(OFFSET*2 + 1)) {
+                for(y in 1:(OFFSET*2 + 1)) {
+                    idx <- (x - 1) * (OFFSET*2 + 1) + y
+                    ray_indices[[idx]] <- get_ray_indices(y, x)
+                }
+            }
+            return(ray_indices)
+        }
+
 
         assemble_world_map <- function() {
             create_map_preview_matrix()
@@ -175,8 +216,9 @@ library(tcltk)
             for(y in (OFFSET+1):(nrow(world_map)-OFFSET)){
                 for(x in (OFFSET+1):(ncol(world_map)-OFFSET)){
                     if(world_map[y, x] %in% c("x", "X", "B")){
-                        enemies[nrow(enemies)+1,] <<- data.frame(symbol = world_map[y, x], y = y, x = x, move_cooldown = 0, max_move_cooldown = 3, hp = 10, max_hp = 10, atk = 1)
+                        enemies[nrow(enemies)+1,] <<- data.frame(symbol = world_map[y, x], y = y, x = x, move_cooldown = 0, max_move_cooldown = 5, hp = 100, max_hp = 100, atk = 1)
                         world_map[y, x] <<- " "
+                        enemies_hp_to_show <<- c(enemies_hp_to_show, FALSE)
                     }
                 }
             }
@@ -190,20 +232,40 @@ library(tcltk)
                 }
                 if(dist_map[enemies[i, "y"], enemies[i, "x"]] <= 7) {
                     if(dist_map[enemies[i, "y"]-1, enemies[i, "x"]] == dist_map[enemies[i, "y"], enemies[i, "x"]] - 1 &&
-                        dist_map[enemies[i, "y"]-1, enemies[i, "x"]] != 0) {
+                        dist_map[enemies[i, "y"]-1, enemies[i, "x"]] != 0 && enemies_map[enemies[i, "y"]-1, enemies[i, "x"]] == 0) {
+                        enemies_map[enemies[i, "y"], enemies[i, "x"]] <<- 0
+
                         enemies[i, "y"] <<- enemies[i, "y"] - 1
+                        enemies[i, "move_cooldown"] <<- enemies[i, "max_move_cooldown"]
+                        
+                        enemies_map[enemies[i, "y"], enemies[i, "x"]] <<- i
                     }
                     else if(dist_map[enemies[i, "y"]+1, enemies[i, "x"]] == dist_map[enemies[i, "y"], enemies[i, "x"]] - 1 &&
-                        dist_map[enemies[i, "y"]+1, enemies[i, "x"]] != 0) {
+                        dist_map[enemies[i, "y"]+1, enemies[i, "x"]] != 0 && enemies_map[enemies[i, "y"]+1, enemies[i, "x"]] == 0) {
+                        enemies_map[enemies[i, "y"], enemies[i, "x"]] <<- 0
+                        
                         enemies[i, "y"] <<- enemies[i, "y"] + 1
+                        enemies[i, "move_cooldown"] <<- enemies[i, "max_move_cooldown"]
+                        
+                        enemies_map[enemies[i, "y"], enemies[i, "x"]] <<- i
                     }
                     else if(dist_map[enemies[i, "y"], enemies[i, "x"]-1] == dist_map[enemies[i, "y"], enemies[i, "x"]] - 1 &&
-                        dist_map[enemies[i, "y"], enemies[i, "x"]-1] != 0) {
+                        dist_map[enemies[i, "y"], enemies[i, "x"]-1] != 0 && enemies_map[enemies[i, "y"], enemies[i, "x"]-1] == 0) {
+                        enemies_map[enemies[i, "y"], enemies[i, "x"]] <<- 0
+
                         enemies[i, "x"] <<- enemies[i, "x"] - 1
+                        enemies[i, "move_cooldown"] <<- enemies[i, "max_move_cooldown"]
+                        
+                        enemies_map[enemies[i, "y"], enemies[i, "x"]] <<- i
                     }
                     else if(dist_map[enemies[i, "y"], enemies[i, "x"]+1] == dist_map[enemies[i, "y"], enemies[i, "x"]] - 1 &&
-                        dist_map[enemies[i, "y"], enemies[i, "x"]+1] != 0) {
+                        dist_map[enemies[i, "y"], enemies[i, "x"]+1] != 0 && enemies_map[enemies[i, "y"], enemies[i, "x"]+1] == 0) {
+                        enemies_map[enemies[i, "y"], enemies[i, "x"]] <<- 0
+                        
                         enemies[i, "x"] <<- enemies[i, "x"] + 1
+                        enemies[i, "move_cooldown"] <<- enemies[i, "max_move_cooldown"]
+                        
+                        enemies_map[enemies[i, "y"], enemies[i, "x"]] <<- i
                     }
                 }
             }
@@ -216,7 +278,7 @@ library(tcltk)
         update_player_sense_aura <- function(){
             dist_map <<- matrix(Inf, nrow = nrow(world_map), ncol = ncol(world_map))
             dist_map[player$y, player$x] <<- 0
-            for(i in 1:7){
+            for(i in 1:20){
                 up <<- rbind(rep(Inf, ncol(world_map)), dist_map[-nrow(dist_map), ])
                 down <<- rbind(dist_map[-1, ], rep(Inf, ncol(world_map)))
                 left <<- cbind(rep(Inf, nrow(world_map)), dist_map[, -ncol(dist_map)])
@@ -224,7 +286,7 @@ library(tcltk)
                 
                 dist_map <<- pmin(dist_map, up + 1, down + 1, left + 1, right + 1)
 
-                dist_map[world_map == "#"] <<- Inf
+                dist_map[world_map %in% COLLIDE_OBJECTS] <<- Inf
             }
 
             #new_dist_map <- matrix(Inf, nrow = nrow(world_map), ncol = ncol(world_map))
@@ -234,13 +296,20 @@ library(tcltk)
 
         player_move <- function(y_offset, x_offset) {
             # check if there is collide object at new position or an enemy
-            if(!(world_map[player$y + y_offset, player$x + x_offset] %in% collide_objects) && 
+            if(!(world_map[player$y + y_offset, player$x + x_offset] %in% COLLIDE_OBJECTS) && 
                !(any(enemies$y == player$y + y_offset & enemies$x == player$x + x_offset))
             ) {
                 player$x <<- player$x + x_offset
                 player$y <<- player$y + y_offset
-
+                
                 update_player_sense_aura()
+            }
+            else{
+                if(world_map[player$y + y_offset, player$x + x_offset] == "[]") {
+                    world_map[player$y + y_offset, player$x + x_offset] <<- "]"
+                
+                    update_player_sense_aura()
+                }
             }
         }
 
@@ -251,7 +320,12 @@ library(tcltk)
                     next
                 }
                 if(enemies[i, "y"] == player$y + sword_slash[1] && enemies[i, "x"] == player$x + sword_slash[2]) {
-                    enemies <<- enemies[-i, ]
+                    enemies[i, "hp"] <<- enemies[i, "hp"] - player$atk
+                    if(enemies[i, "hp"] <= 0) {
+                        enemies_map[enemies[i, "y"], enemies[i, "x"]] = 0
+                    }
+                    enemies_hp_to_show[i] <<- TRUE
+                    print_enemy_hp <<- TRUE
                     break
                 }
             }
@@ -265,6 +339,21 @@ library(tcltk)
             hp_bar <- paste(hp_bar, paste(rep(COLOUR_PALETTE["░"], player$max_hp/5 - player$hp/5), collapse = ""), sep = "")
             return(hp_bar)
         }
+        get_enemy_hp_bar <- function(i) {
+            hp_bar <- ""
+            cat(enemies[i, "hp"])
+            if(enemies[i, "hp"] > 0){
+                hp_bar <- paste(rep(COLOUR_PALETTE["█"], enemies[i, "hp"]%/%5), collapse = "")
+                hp_bar <- paste(hp_bar, paste(rep(COLOUR_PALETTE["░"], enemies[i, "max_hp"]%/%5 - enemies[i, "hp"]%/%5), collapse = ""), sep = "")
+                return(hp_bar)
+            }
+            else{
+                enemies <<- enemies[-i, ]
+                enemies_hp_to_show[i:(length(enemies_hp_to_show)-1)] <<- enemies_hp_to_show[(i+1):length(enemies_hp_to_show)]
+                enemies_hp_to_show[length(enemies_hp_to_show)] <<- FALSE
+                return(NA)
+            }
+        }
 
         print_side_data <- function() {
             # side data - printed at column 15
@@ -275,6 +364,26 @@ library(tcltk)
                 # coloured hp bar
                 cat("Player HP: ", get_player_hp_bar(), "\n")
                 print_player_hp <<- FALSE
+            }
+            if(print_enemy_hp) {
+                for(i in 1:length(enemies_hp_to_show)) {
+                    if(enemies_hp_to_show[i]) {
+                        # coloured hp bar
+                        hp_bar <- get_enemy_hp_bar(i)
+                        if(!is.na(hp_bar)) {
+                            cat("\033[35C")
+                            cat("Enemy HP: ", hp_bar, "\n")
+                        }
+                        else{
+                            # enemy is dead, take next
+                            cat("\033[35C")
+                            cat("Enemy HP: ", "DEAD                 ", "\n")
+                            clear_screen <<- TRUE
+                            i <- i - 1
+                        }
+                    }
+                }
+                print_enemy_hp <<- FALSE
             }
             #cat("\033[H\033[45C")
             #cat("Debug time: ", difftime(end_debug_time, start_debug_time, units = "sec")*1000, "ms\n")
@@ -321,6 +430,18 @@ library(tcltk)
             return(viewport)
         }
 
+        cut_viewport <- function(viewport) {
+            is_light_blocking <- viewport %in% c("##", "#", "[]")
+
+            is_shadowed <- vapply(ray_list, function(ray){
+                any(is_light_blocking[ray])
+            }, logical(1))
+
+            viewport[is_shadowed] <- "shadow"
+            viewport[!circle_mask] <- "shadow"
+            return(viewport)
+        }
+
         colour_viewport <- function(viewport, colours_enabled) {
             if(colours_enabled) {
                 return(matrix(COLOUR_PALETTE[viewport], nrow = OFFSET*2+1, ncol=OFFSET*2+1))
@@ -332,15 +453,8 @@ library(tcltk)
             viewport <- get_viewport(world_map)
             viewport <- draw_enemies(viewport)
             viewport <- draw_sword(viewport)
-            # Add player sense aura to viewport
-            #for(y in (player$y-OFFSET):(player$y+OFFSET)) {
-            #    for(x in (player$x-OFFSET):(player$x+OFFSET)) {
-            #        if(dist_map[y, x] < 60) {
-            #            viewport[y - player$y + OFFSET + 1, x - player$x + OFFSET + 1] <- dist_map[y, x] %% 10
-            #        }
-            #    }
-            #}
             viewport <- draw_player(viewport)
+            viewport <- cut_viewport(viewport)
             viewport <- colour_viewport(viewport, TRUE)
 
 
@@ -350,6 +464,12 @@ library(tcltk)
             # this is becouse paste() prints column by column by default, so now t() causes rows to become columns
             final_frame <- paste(t(cbind(viewport, "\n")), collapse = "")
             
+            if(clear_screen){
+                cat("\033[2J")
+                clear_screen <<- FALSE
+                print_player_hp <<- TRUE
+            }
+
             # Move the cursor to the top-left corner and print the frame
             print_side_data()
             cat("\033[H")
@@ -437,19 +557,22 @@ library(tcltk)
         #    "7" = wrap_colour("7", fg = c(255, 255, 255))                           # white / none              # debug text
         #)
         
-        # implicit colour - no colour wrap
+        
         COLOUR_PALETTE = c(
             "#" = "#",      # clear
             "##" = " ",     # clear
-            " " = " ",      # clear
+            " " = ".",      # clear
+            "[]" = "]",    # clear
+            "]" = " ",      # clear
+            "shadow" = " ", # shadow
             "@" = "\033[32m@\033[0m",      # green
             "!" = "\033[33m!\033[0m",      # yellow
             "x" = "\033[31mx\033[0m",      # red
             "X" = "\033[31mx\033[0m",      # red
             "B" = "\033[31mX\033[0m",      # red
             "/" = "\033[37m/\033[0m",      # white
-            "█" = "█",      # red
-            "░" = "░",
+            "█" = "\033[38;2;255;0;0m█\033[0m",      # red
+            "░" = "\033[38;2;255;0;0m░\033[0m",
             "1" = "1",
             "2" = "2",
             "3" = "3",
@@ -458,9 +581,11 @@ library(tcltk)
             "6" = "6",
             "7" = "7"
         )
+        
+        clear_screen <- FALSE
 
-        collide_objects <- c("#", "##", "x", "X", "B")
-        #collide_objects <- c()
+        COLLIDE_OBJECTS <- c("#", "##", "x", "X", "B", "[]", "@")
+        #COLLIDE_OBJECTS <- c()
     }
 
     { # ---ROOMS AND MAP---
@@ -477,6 +602,10 @@ library(tcltk)
 
         { # world_map and rooms_selection_list
             world_map <- matrix("##", nrow = MAP_ROOM_COUNT_Y*SINGLE_ROOM_H+OFFSET*2, ncol = MAP_ROOM_COUNT_X*SINGLE_ROOM_W+OFFSET*2) #█
+
+            light_radius <- 7
+            circle_mask <- create_circle_mask()
+            ray_list <- precalculate_ray_indices()
 
             { # rooms selection creation
                 room_preassets <- list(
@@ -639,6 +768,11 @@ library(tcltk)
             max_hp = integer(),
             atk = integer()
         )
+
+        enemies_map <- matrix(0, nrow = nrow(world_map), ncol = ncol(world_map))
+
+        enemies_hp_to_show <- c()
+        print_enemy_hp <- FALSE
     }
 
     { # ---PLAYER---
