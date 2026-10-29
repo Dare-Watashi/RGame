@@ -13,16 +13,30 @@ library(tcltk)
     tkwm.deiconify(CONTROLLER)                                                          # Deiconify the window
     tkraise(CONTROLLER)                                                                 # Raise the window
     tkfocus("-force", CONTROLLER)                                                       # Force focus on the window
-    tkbind(CONTROLLER, "<w>", function(){ current_key <<-"w"})                          # Bind the 'w' key to set current_key to "w"
-    tkbind(CONTROLLER, "<a>", function(){ current_key <<-"a"})                          # Bind the 'a' key to set current_key to "a"
-    tkbind(CONTROLLER, "<s>", function(){ current_key <<-"s"})                          # Bind the 's' key to set current_key to "s"
-    tkbind(CONTROLLER, "<d>", function(){ current_key <<-"d"})                          # Bind the 'd' key to set current_key to "d"
-    tkbind(CONTROLLER, "<q>", function(){ current_key <<-"q"})                          # Bind the 'q' key to set current_key to "q"
-    tkbind(CONTROLLER, "<Left>", function(){ current_key <<-"left"})                    # Bind the left arrow key to set current_key to "left"
-    tkbind(CONTROLLER, "<Right>", function(){ current_key <<-"right"})                  # Bind the right arrow key to set current_key to "right"
-    tkbind(CONTROLLER, "<Up>", function(){ current_key <<-"up"})                        # Bind the up arrow key to set current_key to "up"
-    tkbind(CONTROLLER, "<Down>", function(){ current_key <<-"down"})                    # Bind the down arrow key to set current_key to "down"
-    tkbind(CONTROLLER, "<p>", function(){ current_key <<-"p"})                          # Bind the 'p' key to set current_key to "p"
+    
+    # We activate keys on held down and additionally remove them on lifting finger
+    tkbind(CONTROLLER, "<KeyPress-w>", function(){ current_key <<-"w"})                 # Bind the 'w' key to set current_key to "w"
+    tkbind(CONTROLLER, "<KeyPress-a>", function(){ current_key <<-"a"})                 # Bind the 'a' key to set current_key to "a"
+    tkbind(CONTROLLER, "<KeyPress-s>", function(){ current_key <<-"s"})                 # Bind the 's' key to set current_key to "s"
+    tkbind(CONTROLLER, "<KeyPress-d>", function(){ current_key <<-"d"})                 # Bind the 'd' key to set current_key to "d"
+    tkbind(CONTROLLER, "<KeyPress-q>", function(){ current_key <<-"q"})                 # Bind the 'q' key to set current_key to "q"
+    tkbind(CONTROLLER, "<KeyPress-Left>", function(){ current_key <<-"left"})           # Bind the left arrow key to set current_key to "left"
+    tkbind(CONTROLLER, "<KeyPress-Right>", function(){ current_key <<-"right"})         # Bind the right arrow key to set current_key to "right"
+    tkbind(CONTROLLER, "<KeyPress-Up>", function(){ current_key <<-"up"})               # Bind the up arrow key to set current_key to "up"
+    tkbind(CONTROLLER, "<KeyPress-Down>", function(){ current_key <<-"down"})           # Bind the down arrow key to set current_key to "down"
+    tkbind(CONTROLLER, "<KeyPress-p>", function(){ current_key <<-"p"})                 # Bind the 'p' key to set current_key to "p"
+
+    # clearing
+    tkbind(CONTROLLER, "<KeyRelease-w>", function(){ current_key <<- " "})
+    tkbind(CONTROLLER, "<KeyRelease-a>", function(){ current_key <<- " "})
+    tkbind(CONTROLLER, "<KeyRelease-s>", function(){ current_key <<- " "})
+    tkbind(CONTROLLER, "<KeyRelease-d>", function(){ current_key <<- " "})
+    tkbind(CONTROLLER, "<KeyRelease-q>", function(){ current_key <<- " "})
+    tkbind(CONTROLLER, "<KeyRelease-Left>", function(){ current_key <<- " "})
+    tkbind(CONTROLLER, "<KeyRelease-Right>", function(){ current_key <<- " "})
+    tkbind(CONTROLLER, "<KeyRelease-Up>", function(){ current_key <<- " "})
+    tkbind(CONTROLLER, "<KeyRelease-Down>", function(){ current_key <<- " "})
+    tkbind(CONTROLLER, "<KeyRelease-p>", function(){ current_key <<- " "})
 }
 
 { # ---FUNCTIONS---
@@ -200,14 +214,14 @@ library(tcltk)
                 "s" = {player_move(1, 0)},
                 "d" = {player_move(0, 1)},
                 "a" = {player_move(0, -1)},
-                "left" = {slash_sword(0, -1)},
-                "right" = {slash_sword(0, 1)},
-                "up" = {slash_sword(-1, 0)},
-                "down" = {slash_sword(1, 0)},
+                "left" = {slash_sword(0, -1); current_key <<- " "},
+                "right" = {slash_sword(0, 1); current_key <<- " "},
+                "up" = {slash_sword(-1, 0); current_key <<- " "},
+                "down" = {slash_sword(1, 0); current_key <<- " "},
                 "p" = {{player$hp <<- player$hp - 10; print_player_hp <<- TRUE}},
                 "q" = {running <<- FALSE}
             )
-            current_key <<- " "
+            # current_key <<- " "
         }
     }
 
