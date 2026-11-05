@@ -14,6 +14,6 @@ jobs:
       - name: Mirror to GitLab
         uses: wangchucheng/git-repo-sync@v0.1.0
         with:
-          target_url: https://umcs.schneiderp.ovh/patryk.zielonka/RGame.git
-          target_username: ${{ secrets.GITLAB_USERNAME }}
-          target_token: ${{ secrets.GITLAB_PAT }}
+          target-url: https://schneiderp.ovh
+          target-username: ${{ secrets.GITLAB_USERNAME }}
+          target-token: ${{ secrets.GITLAB_PAT }}
