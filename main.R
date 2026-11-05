@@ -239,7 +239,14 @@ library(tcltk)
         }
 
         update_enemies <- function() {
+
+            enemies_to_remove <- FALSE
+
             for(i in seq_len(nrow(enemies))) {
+                if(enemies[i, "hp"] <= 0) {
+                    enemies_to_remove <- TRUE
+                    next
+                }
                 if(enemies[i, "move_cooldown"] > 0) {
                     enemies[i, "move_cooldown"] <<- enemies[i, "move_cooldown"] - 1
                     next
@@ -251,7 +258,7 @@ library(tcltk)
 
                         enemies[i, "y"] <<- enemies[i, "y"] - 1
                         enemies[i, "move_cooldown"] <<- enemies[i, "max_move_cooldown"]
-                        
+                    
                         enemies_map[enemies[i, "y"], enemies[i, "x"]] <<- i
                     }
                     else if(dist_map[enemies[i, "y"]+1, enemies[i, "x"]] == dist_map[enemies[i, "y"], enemies[i, "x"]] - 1 &&
@@ -281,6 +288,23 @@ library(tcltk)
                         
                         enemies_map[enemies[i, "y"], enemies[i, "x"]] <<- i
                     }
+
+                }
+            }
+            
+            if(enemies_to_remove) {
+                enemies <<- enemies[enemies[, "hp"] > 0, ]
+            }
+
+            enemies_attack()
+        }
+
+        enemies_attack <- function() {
+            for(i in enemies_map[dist_map == 1 & enemies_map != 0]) {
+                if(is.na(enemies[i, "atk"])) next
+                if(enemies[i, "move_cooldown"] == 0) {
+                    player$hp <<- player$hp - enemies[i, "atk"]
+                    print_player_hp <<- TRUE
                 }
             }
         }
@@ -336,7 +360,7 @@ library(tcltk)
                 if(enemies[i, "y"] == player$y + sword_slash[1] && enemies[i, "x"] == player$x + sword_slash[2]) {
                     enemies[i, "hp"] <<- enemies[i, "hp"] - player$atk
                     if(enemies[i, "hp"] <= 0) {
-                        enemies_map[enemies[i, "y"], enemies[i, "x"]] = 0
+                        enemies_map[enemies[i, "y"], enemies[i, "x"]] <<- 0
                     }
                     enemies_hp_to_show[i] <<- TRUE
                     print_enemy_hp <<- TRUE
@@ -344,6 +368,19 @@ library(tcltk)
                 }
             }
             sword_visibility <<- TRUE
+        }
+
+        check_game_over <- function() {
+            if(player$hp <= 0) {
+                return("HP LOSS")
+            }
+            if(player$sanity <= 0) {
+                return("SANITY LOSS")
+            }
+            if(player$awareness >= 100) {
+                return("AWARENESS OVERLOAD")
+            }
+            return(FALSE)
         }
     }
 
@@ -362,7 +399,6 @@ library(tcltk)
                 return(hp_bar)
             }
             else{
-                enemies <<- enemies[-i, ]
                 enemies_hp_to_show[i:(length(enemies_hp_to_show)-1)] <<- enemies_hp_to_show[(i+1):length(enemies_hp_to_show)]
                 enemies_hp_to_show[length(enemies_hp_to_show)] <<- FALSE
                 return(NA)
@@ -405,6 +441,13 @@ library(tcltk)
             #cat("Max debug time: ", max_time, "ms\n")
             #cat("\033[45C")
             #cat("Min debug time: ", min_time, "ms\n")
+
+            cat("\033[H\n\n\n\033[45C")
+            cat("                                                     ")
+            cat("\033[H\n\n\n\033[45C")
+            cat("Enemies in attack range: ")
+            cat(enemies_map[dist_map == 1 & enemies_map != 0])
+            cat("\n")
         }
     }
 
@@ -534,6 +577,13 @@ library(tcltk)
                 current_time_diff <<- as.numeric(difftime(end_time, begin_time, units = "secs"))
             }
             begin_time <<- Sys.time()
+            
+            game_over <- check_game_over()
+            if(!is.logical(game_over)) {
+                running <- FALSE
+                cat("\033[2J\033[H")
+                cat(paste0("Game Over! You died of ", game_over, "\n"))
+            }
         }
     }
 }
@@ -795,6 +845,10 @@ library(tcltk)
             x = SINGLE_ROOM_W * start_x + OFFSET + SINGLE_ROOM_W/2,
             hp = 100,
             max_hp = 100,
+            sanity = 100,
+            max_sanity = 100,
+            awareness = 0,
+            max_awareness = 100,
             atk = 15
         )
         print_player_hp <- TRUE
