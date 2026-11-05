@@ -1,0 +1,13 @@
+1. Założenia projektu {
+    - Gra ma być grą w stylu roguelike z elementami survival
+    - Gra ma być generowana losowo z uprzednio przygotowanych assetów
+    - Gra ma być 2D
+
+    - Założenia lore'u {
+        - Osoba (dalej zwana Graczem) zasypia. Gdy śpimy, powstaje świat widziany w snach.
+            Istnieje on tak długo, jak śpimy. Ludzie żyją w tym świecie tak długo, jak śpimy.
+        - Gdy Gracz umiera w śnie (HP = 0), umiera w rzeczywistości.
+        - Gdy Sanity spada do 0, zaczyna się koszmar (czyli fala potworów bez szans na przeżycie)
+        - Gdy Awareness osiąga 100, Gracz budzi się ze snu.
+    }
+}
