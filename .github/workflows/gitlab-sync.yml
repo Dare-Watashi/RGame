@@ -1,0 +1,19 @@
+name: Sync to GitLab
+
+on: [push, delete]
+
+jobs:
+  sync:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Mirror to GitLab
+        uses: wangchucheng/git-repo-sync@v0.1.0
+        with:
+          target-url: https://umcs.schneiderp.ovh/patryk.zielonka/RGame.git
+          target-username: ${{ secrets.GITLAB_USERNAME }}
+          target-token: ${{ secrets.GITLAB_PAT }}
