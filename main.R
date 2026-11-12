@@ -232,21 +232,14 @@ library(tcltk)
                     if(world_map[y, x] %in% c("x", "X", "B")){
                         enemies[nrow(enemies)+1,] <<- data.frame(symbol = world_map[y, x], y = y, x = x, move_cooldown = 0, max_move_cooldown = 5, hp = 100, max_hp = 100, atk = 1)
                         world_map[y, x] <<- " "
-                        enemies_hp_to_show <<- c(enemies_hp_to_show, FALSE)
+                        enemies_hp_to_show <<- c(enemies_hp_to_show, -1)
                     }
                 }
             }
         }
 
         update_enemies <- function() {
-
-            enemies_to_remove <- FALSE
-
             for(i in seq_len(nrow(enemies))) {
-                if(enemies[i, "hp"] <= 0) {
-                    enemies_to_remove <- TRUE
-                    next
-                }
                 if(enemies[i, "move_cooldown"] > 0) {
                     enemies[i, "move_cooldown"] <<- enemies[i, "move_cooldown"] - 1
                     next
@@ -292,11 +285,17 @@ library(tcltk)
                 }
             }
             
-            if(enemies_to_remove) {
-                enemies <<- enemies[enemies[, "hp"] > 0, ]
-            }
+            
 
             enemies_attack()
+        }
+
+        remove_dead_enemies <- function(){
+            if(any(enemies[, "hp"] <= 0)) {
+                enemies_hp_to_show <<- enemies_hp_to_show[enemies_hp_to_show != 0]
+                enemies_hp_to_show[enemies[, "hp"] <= 0] <<- 0
+                enemies <<- enemies[enemies[, "hp"] > 0, ]
+            }
         }
 
         enemies_attack <- function() {
@@ -392,16 +391,16 @@ library(tcltk)
         }
         get_enemy_hp_bar <- function(i) {
             hp_bar <- ""
-            cat(enemies[i, "hp"])
-            if(enemies[i, "hp"] > 0){
+            if((i > 0) && (!is.na(enemies[i, "hp"])) && (enemies[i, "hp"] > 0)){
+                cat(enemies[i, "hp"])
                 hp_bar <- paste(rep(COLOUR_PALETTE["█"], enemies[i, "hp"]%/%5), collapse = "")
                 hp_bar <- paste(hp_bar, paste(rep(COLOUR_PALETTE["░"], enemies[i, "max_hp"]%/%5 - enemies[i, "hp"]%/%5), collapse = ""), sep = "")
                 return(hp_bar)
             }
             else{
-                enemies_hp_to_show[i:(length(enemies_hp_to_show)-1)] <<- enemies_hp_to_show[(i+1):length(enemies_hp_to_show)]
-                enemies_hp_to_show[length(enemies_hp_to_show)] <<- FALSE
-                return(NA)
+                clear_screen <<- TRUE
+                enemies_hp_to_show[i] <<- 0
+                return("DEAD                        ")
             }
         }
 
@@ -416,21 +415,15 @@ library(tcltk)
                 print_player_hp <<- FALSE
             }
             if(print_enemy_hp) {
-                for(i in 1:length(enemies_hp_to_show)) {
-                    if(enemies_hp_to_show[i]) {
-                        # coloured hp bar
+                for(i in length(enemies_hp_to_show):1) {
+                    if(enemies_hp_to_show[i] != -1) {
                         hp_bar <- get_enemy_hp_bar(i)
-                        if(!is.na(hp_bar)) {
-                            cat("\033[35C")
-                            cat("Enemy HP: ", hp_bar, "\n")
-                        }
-                        else{
-                            # enemy is dead, take next
-                            cat("\033[35C")
-                            cat("Enemy HP: ", "DEAD                 ", "\n")
-                            clear_screen <<- TRUE
-                            i <- i - 1
-                        }
+                        cat("\033[35C")
+                        cat("Enemy HP: ", hp_bar, "\n")
+                    }
+                    if(enemies_hp_to_show[i] == 0){
+                        enemies_hp_to_show[i] <<- enemies_hp_to_show[-i]
+                        enemies[i, ] <<- enemies[-i, ]
                     }
                 }
                 print_enemy_hp <<- FALSE
@@ -441,13 +434,6 @@ library(tcltk)
             #cat("Max debug time: ", max_time, "ms\n")
             #cat("\033[45C")
             #cat("Min debug time: ", min_time, "ms\n")
-
-            cat("\033[H\n\n\n\033[45C")
-            cat("                                                     ")
-            cat("\033[H\n\n\n\033[45C")
-            cat("Enemies in attack range: ")
-            cat(enemies_map[dist_map == 1 & enemies_map != 0])
-            cat("\n")
         }
     }
 
@@ -561,6 +547,7 @@ library(tcltk)
 
             # colour-wrap function \RGB - ~25ms - ~550ms
             # implicit colour \16c - ~20ms - ~378ms
+            #remove_dead_enemies()
             draw_world()
 
             #start_debug_time <<- Sys.time()
