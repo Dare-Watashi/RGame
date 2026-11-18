@@ -26,6 +26,7 @@ library(tcltk)
     tkbind(CONTROLLER, "<KeyPress-Down>", function(){ current_key <<-"down"})           # Bind the down arrow key to set current_key to "down"
     tkbind(CONTROLLER, "<KeyPress-p>", function(){ current_key <<-"p"})                 # Bind the 'p' key to set current_key to "p"
     tkbind(CONTROLLER, "<KeyPress-r>", function(){ current_key <<-"r"})                 # Bind the 'r' key to set current_key to "r"
+    tkbind(CONTROLLER, "<KeyPress-Return>", function(){ current_key <<-"enter"})                 # Bind the 'r' key to set current_key to "r"
 
     # clearing
     tkbind(CONTROLLER, "<KeyRelease-w>", function(){ current_key <<- " "})
@@ -39,6 +40,7 @@ library(tcltk)
     tkbind(CONTROLLER, "<KeyRelease-Down>", function(){ current_key <<- " "})
     tkbind(CONTROLLER, "<KeyRelease-p>", function(){ current_key <<- " "})
     tkbind(CONTROLLER, "<KeyRelease-r>", function(){ current_key <<- " "})
+    tkbind(CONTROLLER, "<KeyRelease-Return>", function(){ current_key <<- " "})
 }
 
 { # ---FUNCTIONS---
@@ -242,7 +244,8 @@ library(tcltk)
                 "up" = {slash_sword(-1, 0); current_key <<- " "},
                 "down" = {slash_sword(1, 0); current_key <<- " "},
                 "r" = {regen_hp()},
-                "q" = {running <<- FALSE}
+                "q" = {running <<- FALSE},
+                "enter" = {debug_loop(); current_key <<- " "}
             )
             # current_key <<- " "
         }
@@ -338,7 +341,7 @@ library(tcltk)
                 if(is.na(enemies[i, "atk"])) next
                 if(enemies[i, "move_cooldown"] == 0) {
                     player$hp <<- player$hp - enemies[i, "atk"]
-                    print_player_hp <<- TRUE
+                    b_print_player_hp <<- TRUE
                 }
             }
         }
@@ -370,8 +373,8 @@ library(tcltk)
             if(player$awareness >= 5 && player$hp < player$max_hp){
                 player$awareness <<- player$awareness - 5
                 player$hp <<- min(player$hp + 5, player$max_hp); 
-                print_player_hp <<- TRUE
-                print_player_awareness <<- TRUE
+                b_print_player_hp <<- TRUE
+                b_print_player_awareness <<- TRUE
             }
         }
 
@@ -420,12 +423,12 @@ library(tcltk)
             if(world_map[player$y, player$x] == "a"){
                 player$awareness <<- player$awareness + 10
                 world_map[player$y, player$x] <<- " "
-                print_player_awareness <<- TRUE
+                b_print_player_awareness <<- TRUE
             }
             else if(world_map[player$y, player$x] == "A"){
                 player$awareness <<- player$awareness + 20
                 world_map[player$y, player$x] <<- " "
-                print_player_awareness <<- TRUE
+                b_print_player_awareness <<- TRUE
             }
         }
 
@@ -445,7 +448,7 @@ library(tcltk)
         check_map_passed <- function(viewport) {
             if(world_map[player$y, player$x] == "_"){
                 print_enemy_hp <<- FALSE
-                print_player_hp <<- TRUE
+                b_print_player_hp <<- TRUE
                 return(TRUE)
             }
             return(FALSE)
@@ -486,26 +489,28 @@ library(tcltk)
         }
 
         print_side_data <- function() {
-            # side data - printed at column 15
-            cat("\033[H\033[25C")
+            # print debug data - printed at column 70
+            cat("\033[H\033[70C")
             cat("FPS: ", round(1/current_time_diff, 0), "\n")
-            if(print_player_hp) {
-                cat("\033[H\033[35C")
+
+            # player and enemies data - printed at column 15
+            if(b_print_player_hp) {
+                cat("\033[H\033[15C")
                 # coloured hp bar
                 cat("Player HP: ", get_player_hp_bar(), "\n")
-                print_player_hp <<- FALSE
+                b_print_player_hp <<- FALSE
             } else cat("\n")
-            if(print_player_sanity){
-                cat("\033[H\n\033[35C")
+            if(b_print_player_sanity){
+                cat("\033[H\n\033[15C")
                 # coloured sanity bar
                 cat("Player Sanity: ", get_player_sanity_bar(), "\n")
-                print_player_sanity <<- FALSE
+                b_print_player_sanity <<- FALSE
             } else cat("\n")
-            if(print_player_awareness){
-                cat("\033[H\n\n\033[35C")
+            if(b_print_player_awareness){
+                cat("\033[H\n\n\033[15C")
                 # coloured awareness bar
                 cat("Player Awareness: ", get_player_awareness_bar(), "\n")
-                print_player_awareness <<- FALSE
+                b_print_player_awareness <<- FALSE
             } else cat("\n")
      
             if(print_enemy_hp) {
@@ -604,9 +609,9 @@ library(tcltk)
             if(clear_screen){
                 cat("\033[2J")
                 clear_screen <<- FALSE
-                print_player_hp <<- TRUE
-                print_player_sanity <<- TRUE
-                print_player_awareness <<- TRUE
+                b_print_player_hp <<- TRUE
+                b_print_player_sanity <<- TRUE
+                b_print_player_awareness <<- TRUE
             }
 
             # Move the cursor to the top-left corner and print the frame
@@ -617,6 +622,89 @@ library(tcltk)
             # uncoloured wall ~18ms - ~452ms    - current
             # GPU accelerated terminal ~19ms - ~552ms
             
+        }
+    }
+
+    { # ---DEBUG FUNCTIONS---
+
+        debug_show_map <- function(){
+            for(i in OFFSET:(nrow(world_map)-OFFSET)){
+                for(j in OFFSET:(ncol(world_map)-OFFSET)){
+                    cat(COLOUR_PALETTE[world_map[i, j]])
+                }
+                cat("\n")
+            }
+        }
+
+        debug_show_rooms <- function(){
+            for(i in 1:nrow(map_preview_matrix)){
+                for(j in 1:ncol(map_preview_matrix)){
+                    cat(map_preview_matrix[i, j], "\t")
+                }
+                cat("\n")
+            }
+        }
+
+        debug_add_object <- function(){
+            type <- readline(prompt = "\ttype (wall [w], floor [f], enemy [x, X, B], door [[], ]], awareness chest [a, A]): ")
+            
+            # checking the input without trailing whitespace
+            if(trimws(type) %in% c("w", "f", "x", "X", "B", "[]", "]", "a", "A")){
+                posy <- readline(prompt = "\tposy (relative to player): ")
+                posx <- readline(prompt = "\tposx (relative to player): ")
+                switch(trimws(type),
+                    "w" = {world_map[player$y + as.numeric(posx), player$x + as.numeric(posy)] <<- "#"},
+                    "f" = {world_map[player$y + as.numeric(posx), player$x + as.numeric(posy)] <<- " "},
+                    "x" = {world_map[player$y + as.numeric(posx), player$x + as.numeric(posy)] <<- "x"},
+                    "X" = {world_map[player$y + as.numeric(posx), player$x + as.numeric(posy)] <<- "X"},
+                    "B" = {world_map[player$y + as.numeric(posx), player$x + as.numeric(posy)] <<- "B"},
+                    "[]" = {world_map[player$y + as.numeric(posx), player$x + as.numeric(posy)] <<- "]"},
+                    "[" = {world_map[player$y + as.numeric(posx), player$x + as.numeric(posy)] <<- " "},
+                    "a" = {world_map[player$y + as.numeric(posx), player$x + as.numeric(posy)] <<- "a"},
+                    "A" = {world_map[player$y + as.numeric(posx), player$x + as.numeric(posy)] <<- "A"}
+                )
+            }
+        }
+
+        execute_command <- function(cmd){
+            switch(cmd,
+                "quit" = {debugging <<- FALSE},
+                "quit game" = {running <<- FALSE; debugging <<- FALSE},
+                "clear" = {cat("\033[2J\033[H")},
+                "set hp" = {player$hp <<- as.numeric(readline(prompt = "amount = "))},
+                "set sn" = {player$sanity <<- as.numeric(readline(prompt = "amount = "))},
+                "set aw" = {player$awareness <<- as.numeric(readline(prompt = "amount = "))},
+                "show map" = {debug_show_map()},
+                "show rooms" = {debug_show_rooms()},
+                "add object" = {debug_add_object()},
+                NULL
+            )
+        }
+
+        debug_loop <- function(){
+            # clear screen, show cursor and return to top left courner
+            cat("\033[2J\033[?25h\033[H")
+            bringToTop(which = -1) # moves console to focus
+
+            debugging <<- TRUE
+            while(debugging){
+                cat("Debug mode\n")
+                print("Available commands: quit, quit game, clear, set hp, set sn, set aw, show map, show rooms")
+                cmd <- readline(prompt="> ")
+                execute_command(cmd)
+            }
+
+            b_print_enemy_hp <<- TRUE
+            b_print_player_hp <<- TRUE
+            b_print_player_sanity <<- TRUE
+            b_print_player_awareness <<- TRUE
+            
+            # refocus on tlck window
+            tkfocus("-force", CONTROLLER)           # Force focus on the window
+
+            # hide cursour, clear the screen and place cursor at top-left
+            cat("\033[?25l\033[2J\033[H")
+
         }
     }
 
@@ -682,6 +770,7 @@ library(tcltk)
 { # ---GLOBAL DATA---
     { # ---GAME STATE---
         running <- TRUE
+        debugging <- FALSE
         TARGET_TICK_TIME <- 0.05
         start_debug_time <- Sys.time()
         end_debug_time <- Sys.time()
@@ -1194,9 +1283,9 @@ library(tcltk)
             max_awareness = 100,
             atk = 15
         )
-        print_player_hp <- TRUE
-        print_player_sanity <- TRUE
-        print_player_awareness <- TRUE
+        b_print_player_hp <- TRUE
+        b_print_player_sanity <- TRUE
+        b_print_player_awareness <- TRUE
 
         dist_map <- matrix(Inf, nrow = nrow(world_map), ncol = ncol(world_map))
 
