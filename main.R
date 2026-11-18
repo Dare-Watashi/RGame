@@ -25,6 +25,7 @@ library(tcltk)
     tkbind(CONTROLLER, "<KeyPress-Up>", function(){ current_key <<-"up"})               # Bind the up arrow key to set current_key to "up"
     tkbind(CONTROLLER, "<KeyPress-Down>", function(){ current_key <<-"down"})           # Bind the down arrow key to set current_key to "down"
     tkbind(CONTROLLER, "<KeyPress-p>", function(){ current_key <<-"p"})                 # Bind the 'p' key to set current_key to "p"
+    tkbind(CONTROLLER, "<KeyPress-r>", function(){ current_key <<-"r"})                 # Bind the 'r' key to set current_key to "r"
 
     # clearing
     tkbind(CONTROLLER, "<KeyRelease-w>", function(){ current_key <<- " "})
@@ -37,6 +38,7 @@ library(tcltk)
     tkbind(CONTROLLER, "<KeyRelease-Up>", function(){ current_key <<- " "})
     tkbind(CONTROLLER, "<KeyRelease-Down>", function(){ current_key <<- " "})
     tkbind(CONTROLLER, "<KeyRelease-p>", function(){ current_key <<- " "})
+    tkbind(CONTROLLER, "<KeyRelease-r>", function(){ current_key <<- " "})
 }
 
 { # ---FUNCTIONS---
@@ -62,21 +64,25 @@ library(tcltk)
         # We repeat that action for every cell that has number lower then 24, remembering that we do not overwrite cells that already have a number.
 
         unlock_adjacent_cells <- function(row, col) {
-            if(row > 1 && map_preview_matrix[row-1, col] == 25 && runif(1) < 0.5) {
+            if(row > 1 && map_preview_matrix[row-1, col] == 25 && (runif(1) < 0.5 || !first_room_placed)) {
                 map_preview_matrix[row-1, col] <<- map_preview_matrix[row, col] + 1
                 unlock_adjacent_cells(row-1, col)
+                first_room_placed <<- TRUE
             }
-            if(row < MAP_ROOM_COUNT_Y && map_preview_matrix[row+1, col] == 25 && runif(1) < 0.5) {
+            if(row < MAP_ROOM_COUNT_Y && map_preview_matrix[row+1, col] == 25 && (runif(1) < 0.5 || !first_room_placed)) {
                 map_preview_matrix[row+1, col] <<- map_preview_matrix[row, col] + 1
                 unlock_adjacent_cells(row+1, col)
+                first_room_placed <<- TRUE
             }
-            if(col > 1 && map_preview_matrix[row, col-1] == 25 && runif(1) < 0.5) {
+            if(col > 1 && map_preview_matrix[row, col-1] == 25 && (runif(1) < 0.5 || !first_room_placed)) {
                 map_preview_matrix[row, col-1] <<- map_preview_matrix[row, col] + 1
                 unlock_adjacent_cells(row, col-1)
+                first_room_placed <<- TRUE
             }
-            if(col < MAP_ROOM_COUNT_X && map_preview_matrix[row, col+1] == 25 && runif(1) < 0.5) {
+            if(col < MAP_ROOM_COUNT_X && map_preview_matrix[row, col+1] == 25 && (runif(1) < 0.5 || !first_room_placed)) {
                 map_preview_matrix[row, col+1] <<- map_preview_matrix[row, col] + 1
                 unlock_adjacent_cells(row, col+1)
+                first_room_placed <<- TRUE
             }
         }
 
@@ -89,24 +95,40 @@ library(tcltk)
         }
 
 
-        place_room <- function(row, col) {
-            world_map[(row-(SINGLE_ROOM_H%/%2)):(row+(SINGLE_ROOM_H%/%2)), (col-(SINGLE_ROOM_W%/%2)):(col+(SINGLE_ROOM_W%/%2))] <<- sample(rooms_selection_list, 1)[[1]]
+        place_room <- function(row, col, room = NA) {
+            if(any(is.na(room))){
+                room <- sample(rooms_selection_list, 1)[[1]]
+                world_map[(row-(SINGLE_ROOM_H%/%2)):(row+(SINGLE_ROOM_H%/%2)), (col-(SINGLE_ROOM_W%/%2)):(col+(SINGLE_ROOM_W%/%2))] <<- room
+            }
+            else{
+                world_map[(row-(SINGLE_ROOM_H%/%2)):(row+(SINGLE_ROOM_H%/%2)), (col-(SINGLE_ROOM_W%/%2)):(col+(SINGLE_ROOM_W%/%2))] <<- room
+            }
         }
 
         fill_world_with_rooms <- function() {
             room_place_offset_y <- OFFSET + 1 + SINGLE_ROOM_H%/%2
             room_place_offset_x <- OFFSET + 1 + SINGLE_ROOM_W%/%2
 
+            room_s <- min(map_preview_matrix)
+            room_e <- max(map_preview_matrix[map_preview_matrix != 25])
             for(y in 0:(MAP_ROOM_COUNT_Y-1)){
                 for(x in 0:(MAP_ROOM_COUNT_X-1)){
                     if(map_preview_matrix[y+1, x+1] != 25) {
-                        place_room( room_place_offset_y + (SINGLE_ROOM_H-1)*y, room_place_offset_x + (SINGLE_ROOM_W-1)*x)
-                        player$y <<- room_place_offset_y + (SINGLE_ROOM_H-1)*y
-                        player$x <<- room_place_offset_x + (SINGLE_ROOM_W-1)*x
-                        #world_map[room_place_offset_y + (SINGLE_ROOM_H-1)*y, room_place_offset_x + (SINGLE_ROOM_W-1)*x] <<- map_preview_matrix[y+1][x+1]
+                        if(map_preview_matrix[y+1, x+1] == room_s) {
+                            place_room( room_place_offset_y + (SINGLE_ROOM_H-1)*y, room_place_offset_x + (SINGLE_ROOM_W-1)*x, special_rooms_list[2][[1]])
+                            player$y <<- room_place_offset_y + (SINGLE_ROOM_H-1)*y-2
+                            player$x <<- room_place_offset_x + (SINGLE_ROOM_W-1)*x
+                        } else if(map_preview_matrix[y+1, x+1] == room_e) {
+                            place_room( room_place_offset_y + (SINGLE_ROOM_H-1)*y, room_place_offset_x + (SINGLE_ROOM_W-1)*x, special_rooms_list[1][[1]])
+                        }
+                        else{
+                            place_room( room_place_offset_y + (SINGLE_ROOM_H-1)*y, room_place_offset_x + (SINGLE_ROOM_W-1)*x)
+                        }
                     }
                 }
             }
+
+            
         }
 
         place_doors <- function(row, col) {
@@ -218,7 +240,7 @@ library(tcltk)
                 "right" = {slash_sword(0, 1); current_key <<- " "},
                 "up" = {slash_sword(-1, 0); current_key <<- " "},
                 "down" = {slash_sword(1, 0); current_key <<- " "},
-                "p" = {{player$hp <<- player$hp - 10; print_player_hp <<- TRUE}},
+                "r" = {regen_hp()},
                 "q" = {running <<- FALSE}
             )
             # current_key <<- " "
@@ -331,6 +353,15 @@ library(tcltk)
             #dist_map <<- new_dist_map
         }
 
+        regen_hp <- function() {
+            if(player$awareness >= 5){
+                player$awareness <<- player$awareness - 5
+                player$hp <<- min(player$hp + 5, player$max_hp); 
+                print_player_hp <<- TRUE
+                print_player_awareness <<- TRUE
+            }
+        }
+
         player_move <- function(y_offset, x_offset) {
             # check if there is collide object at new position or an enemy
             if(!(world_map[player$y + y_offset, player$x + x_offset] %in% COLLIDE_OBJECTS) && 
@@ -360,6 +391,7 @@ library(tcltk)
                     enemies[i, "hp"] <<- enemies[i, "hp"] - player$atk
                     if(enemies[i, "hp"] <= 0) {
                         enemies_map[enemies[i, "y"], enemies[i, "x"]] <<- 0
+                        player$awareness <<- player$awareness + 5
                     }
                     enemies_hp_to_show[i] <<- TRUE
                     print_enemy_hp <<- TRUE
@@ -381,6 +413,17 @@ library(tcltk)
             }
             return(FALSE)
         }
+
+        check_map_passed <- function(viewport) {
+            if(world_map[player$y, player$x] == "_"){
+                enemies <<- data.frame()
+                enemies_hp_to_show <<- c()
+                print_enemy_hp <<- FALSE
+                print_player_hp <<- TRUE
+                return(TRUE)
+            }
+            return(FALSE)
+        }
     }
 
     { # ---SIDE DATA FUNCTIONS---
@@ -389,6 +432,18 @@ library(tcltk)
             hp_bar <- paste(hp_bar, paste(rep(COLOUR_PALETTE["░"], player$max_hp/5 - player$hp/5), collapse = ""), sep = "")
             return(hp_bar)
         }
+        get_player_sanity_bar <- function() {
+            sanity_bar <- paste(rep(COLOUR_PALETTE["█s"], player$sanity/5), collapse = "")
+            sanity_bar <- paste(sanity_bar, paste(rep(COLOUR_PALETTE["░s"], player$max_sanity/5 - player$sanity/5), collapse = ""), sep = "")
+            return(sanity_bar)
+        }
+        get_player_awareness_bar <- function() {
+            awareness_bar <- paste(rep(COLOUR_PALETTE["█a"], player$awareness/5), collapse = "")
+            awareness_bar <- paste(awareness_bar, paste(rep(COLOUR_PALETTE["░a"], player$max_awareness/5 - player$awareness/5), collapse = ""), sep = "")
+            return(awareness_bar)
+
+        }
+
         get_enemy_hp_bar <- function(i) {
             hp_bar <- ""
             if((i > 0) && (!is.na(enemies[i, "hp"])) && (enemies[i, "hp"] > 0)){
@@ -413,7 +468,20 @@ library(tcltk)
                 # coloured hp bar
                 cat("Player HP: ", get_player_hp_bar(), "\n")
                 print_player_hp <<- FALSE
-            }
+            } else cat("\n")
+            if(print_player_sanity){
+                cat("\033[H\n\033[35C")
+                # coloured sanity bar
+                cat("Player Sanity: ", get_player_sanity_bar(), "\n")
+                print_player_sanity <<- FALSE
+            } else cat("\n")
+            if(print_player_awareness){
+                cat("\033[H\n\n\033[35C")
+                # coloured awareness bar
+                cat("Player Awareness: ", get_player_awareness_bar(), "\n")
+                print_player_awareness <<- FALSE
+            } else cat("\n")
+     
             if(print_enemy_hp) {
                 for(i in length(enemies_hp_to_show):1) {
                     if(enemies_hp_to_show[i] != -1) {
@@ -511,6 +579,8 @@ library(tcltk)
                 cat("\033[2J")
                 clear_screen <<- FALSE
                 print_player_hp <<- TRUE
+                print_player_sanity <<- TRUE
+                print_player_awareness <<- TRUE
             }
 
             # Move the cursor to the top-left corner and print the frame
@@ -544,6 +614,13 @@ library(tcltk)
         while(running){
             check_input()
             update_enemies()
+
+
+            if(check_map_passed()){
+                cat("\033[?25l\033[2J\033[H") 
+                assemble_world_map()
+                cat("\033[?25l\033[2J\033[H")
+            }
 
             # colour-wrap function \RGB - ~25ms - ~550ms
             # implicit colour \16c - ~20ms - ~378ms
@@ -615,6 +692,8 @@ library(tcltk)
             " " = ".",      # clear
             "[]" = "]",    # clear
             "]" = " ",      # clear
+            "_" = "_",      # clear
+            "‾" = "‾",      # clear
             "shadow" = " ", # shadow
             "@" = "\033[32m@\033[0m",      # green
             "!" = "\033[33m!\033[0m",      # yellow
@@ -624,6 +703,10 @@ library(tcltk)
             "/" = "\033[37m/\033[0m",      # white
             "█" = "\033[38;2;255;0;0m█\033[0m",      # red
             "░" = "\033[38;2;255;0;0m░\033[0m",
+            "█s" = "\033[38;2;100;0;0m█\033[0m",      # dark red
+            "░s" = "\033[38;2;100;0;0m░\033[0m",
+            "█a" = "\033[38;2;255;255;0m█\033[0m",      # yellow
+            "░a" = "\033[38;2;255;255;0m░\033[0m",
             "1" = "1",
             "2" = "2",
             "3" = "3",
@@ -640,7 +723,7 @@ library(tcltk)
     }
 
     { # ---ROOMS AND MAP---
-        { # CONSTANTS
+        { # CONSTANTS and world variables
             SINGLE_ROOM_H <- 21
             SINGLE_ROOM_W <- 21
             OFFSET <- 10
@@ -649,6 +732,7 @@ library(tcltk)
             map_preview_matrix <- matrix(25, nrow = MAP_ROOM_COUNT_Y, ncol = MAP_ROOM_COUNT_X)
             start_y <- 0
             start_x <- 0
+            first_room_placed <- FALSE
         }
 
         { # world_map and rooms_selection_list
@@ -783,7 +867,51 @@ library(tcltk)
                         ..................."
                 )
 
+                special_rooms <- list(
+                    room_end = "
+                        .................../
+                        .................../
+                        .................../
+                        .................../
+                        .................../
+                        ........###......../
+                        .......#...#......./
+                        ......#.._..#....../
+                        ......#.....#....../
+                        .................../
+                        .................../
+                        .................../
+                        .................../
+                        .................../
+                        .................../
+                        .................../
+                        .................../
+                        .................../
+                        ...................",
+                    room_start = "
+                        .................../
+                        .................../
+                        .................../
+                        .................../
+                        .................../
+                        .................../
+                        ......#.....#....../
+                        ......#..‾..#....../
+                        .......#...#......./
+                        ........###......../
+                        .................../
+                        .................../
+                        .................../
+                        .................../
+                        .................../
+                        .................../
+                        .................../
+                        .................../
+                        ..................."
+                )
+                
                 rooms_selection_list <- list()
+                special_rooms_list <- list()
 
                 for (room_template in room_preassets) {
                     # Step by step processing using |> pipe
@@ -804,6 +932,24 @@ library(tcltk)
                     rooms_selection_list[[length(rooms_selection_list) + 1]] <- room_matrix
                 }
 
+                for (room_template in special_rooms) {
+                    # Step by step processing using |> pipe
+                    room_template <- room_template |>
+                        gsub(pattern = "[[:space:]]", replacement = "") |> # 1. Removes all spaces, tabs and newlines
+                        gsub(pattern = "\\.", replacement = " ")        # 2. Replaces dots with spaces (dot in regex is \\.)
+                    
+                    # Split by newlines
+                    lines <- strsplit(room_template, "/")[[1]]
+                    
+                    # Change to matrix
+                    room_matrix <- matrix("#", nrow = SINGLE_ROOM_H, ncol = SINGLE_ROOM_W)
+                    interior_matrix <- do.call( rbind, strsplit(lines, ""))
+
+                    room_matrix[2:(SINGLE_ROOM_H-1), 2:(SINGLE_ROOM_W-1)] <- interior_matrix
+
+                    # Add to selection list
+                    special_rooms_list[[length(special_rooms_list) + 1]] <- room_matrix
+                }
             }
         }
     }
@@ -839,6 +985,8 @@ library(tcltk)
             atk = 15
         )
         print_player_hp <- TRUE
+        print_player_sanity <- TRUE
+        print_player_awareness <- TRUE
 
         dist_map <- matrix(Inf, nrow = nrow(world_map), ncol = ncol(world_map))
 
