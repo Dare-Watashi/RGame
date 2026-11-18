@@ -111,6 +111,7 @@ library(tcltk)
 
             room_s <- min(map_preview_matrix)
             room_e <- max(map_preview_matrix[map_preview_matrix != 25])
+            #room_e <- min(map_preview_matrix) + 1
             for(y in 0:(MAP_ROOM_COUNT_Y-1)){
                 for(x in 0:(MAP_ROOM_COUNT_X-1)){
                     if(map_preview_matrix[y+1, x+1] != 25) {
@@ -249,6 +250,9 @@ library(tcltk)
 
     { # ---ENEMY FUNCTIONS---
         get_enemies_from_world_map <- function() {
+            enemies <<- enemies[0, ] # Clear the dataframe while preserving columns
+            enemies_hp_to_show <<- c()
+            
             for(y in (OFFSET+1):(nrow(world_map)-OFFSET)){
                 for(x in (OFFSET+1):(ncol(world_map)-OFFSET)){
                     if(world_map[y, x] %in% c("x", "X", "B")){
@@ -416,8 +420,6 @@ library(tcltk)
 
         check_map_passed <- function(viewport) {
             if(world_map[player$y, player$x] == "_"){
-                enemies <<- data.frame()
-                enemies_hp_to_show <<- c()
                 print_enemy_hp <<- FALSE
                 print_player_hp <<- TRUE
                 return(TRUE)
@@ -613,14 +615,15 @@ library(tcltk)
         # Main game loop
         while(running){
             check_input()
-            update_enemies()
-
 
             if(check_map_passed()){
                 cat("\033[?25l\033[2J\033[H") 
                 assemble_world_map()
                 cat("\033[?25l\033[2J\033[H")
+                next;
             }
+
+            update_enemies()
 
             # colour-wrap function \RGB - ~25ms - ~550ms
             # implicit colour \16c - ~20ms - ~378ms
